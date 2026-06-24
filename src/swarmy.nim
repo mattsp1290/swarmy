@@ -1,24 +1,15 @@
-import std/[json, os]
+import std/os
 
-type
-  AppInfo* = object
-    name*: string
-    version*: string
-    mode*: string
+import swarmy_cli/dispatch
 
-proc appInfo*(mode = "development"): AppInfo =
-  AppInfo(name: "swarmy", version: "0.1.0", mode: mode)
+proc main*() =
+  let result = run(commandLineParams())
 
-proc toJson*(info: AppInfo): JsonNode =
-  %*{
-    "name": info.name,
-    "version": info.version,
-    "mode": info.mode
-  }
-
-proc main() =
-  let mode = getEnv("SWARMY_MODE", "development")
-  echo appInfo(mode).toJson()
+  if result.output.len > 0:
+    stdout.write(result.output)
+  if result.error.len > 0:
+    stderr.write(result.error)
+  quit(result.exitCode)
 
 when isMainModule:
   main()

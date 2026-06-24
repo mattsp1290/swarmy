@@ -1,4 +1,4 @@
-import std/[options, os, osproc, streams, strutils, times, unittest]
+import std/[options, os, osproc, strutils, times, unittest]
 
 import tiny_sqlite
 
@@ -26,6 +26,9 @@ proc insertRunAndBead(store: Store) =
     RunId,
     BeadId
   )
+
+proc scalarInt(store: Store, sql: string): int64 =
+  store.db.value(sql).get.fromDbValue(int64)
 
 proc writeStage(dbPath: string) =
   var store = initializeStore(dbPath)
@@ -61,7 +64,46 @@ proc readStage(dbPath: string) =
       stderr.write("unexpected sequence after restart: " & $stage.seq & "\n")
       quit(6)
 
-    stdout.write(stage.runId & " " & stage.beadId & " " & $stage.stage & "\n")
+    let nextSeq = store.recordStageEvent(
+      "restart-event-2",
+      RunId,
+      BeadId,
+      "2026-06-24T00:00:02Z",
+      stageReview,
+      source = "restart-test"
+    )
+    if nextSeq != 2:
+      stderr.write("unexpected post-restart sequence: " & $nextSeq & "\n")
+      quit(7)
+
+    let latest = store.latestBeadStage(RunId, BeadId)
+    if latest.isNone:
+      stderr.write("missing latest stage after post-restart append\n")
+      quit(8)
+    let appended = latest.get
+    if appended.stage != stageReview:
+      stderr.write("unexpected post-restart stage: " & $appended.stage & "\n")
+      quit(9)
+    if appended.eventId != "restart-event-2":
+      stderr.write(
+        "unexpected post-restart event id: " & appended.eventId & "\n"
+      )
+      quit(10)
+    if appended.seq != 2:
+      stderr.write("unexpected latest sequence: " & $appended.seq & "\n")
+      quit(11)
+
+    if store.scalarInt("SELECT COUNT(*) FROM events") != 2:
+      stderr.write("unexpected persisted event count after restart\n")
+      quit(12)
+    if store.scalarInt("SELECT next_seq FROM event_cursors WHERE run_id = '" & RunId & "'") != 3:
+      stderr.write("unexpected persisted cursor after restart\n")
+      quit(13)
+
+    stdout.write(
+      "reader " & stage.runId & " " & stage.beadId & " " & $stage.stage &
+        " then " & $appended.stage & "\n"
+    )
   finally:
     store.close()
 
@@ -74,12 +116,18 @@ if paramCount() == 2 and paramStr(1) == "reader":
   quit(0)
 
 proc withTempDb(body: proc(path: string)) =
-  let dir = getTempDir() / "swarmy-restart-test-" & $getCurrentProcessId() &
-    "-" & $epochTime().int
+  var dir = ""
+  for attempt in 0 ..< 1000:
+    let candidate = getTempDir() / "swarmy-restart-test-" &
+      $getCurrentProcessId() & "-" & $epochTime() & "-" & $attempt
+    if not dirExists(candidate):
+      createDir(candidate)
+      dir = candidate
+      break
+  if dir.len == 0:
+    raise newException(IOError, "could not create unique restart test directory")
+
   let path = dir / "swarmy.db"
-  if dirExists(dir):
-    removeDir(dir)
-  createDir(dir)
   try:
     body(path)
   finally:
@@ -91,17 +139,24 @@ proc waitForProcess(process: Process): tuple[exitCode: int, output: string] =
     process.kill()
     discard process.waitForExit(1000)
     result.exitCode = -1
-  result.output = process.outputStream.readAll()
 
 proc runHelper(mode, dbPath: string): tuple[exitCode: int, output: string] =
+  let logPath = parentDir(dbPath) / (mode & ".log")
+  let command = quoteShellPosix(getAppFilename()) & " " &
+    quoteShellPosix(mode) & " " & quoteShellPosix(dbPath) & " > " &
+    quoteShellPosix(logPath) & " 2>&1"
   let process = startProcess(
-    getAppFilename(),
+    "/bin/sh",
     workingDir = getCurrentDir(),
-    args = @[mode, dbPath],
-    options = {poStdErrToStdOut}
+    args = @["-c", command],
+    options = {poUsePath, poParentStreams}
   )
-  result = process.waitForProcess()
-  process.close()
+  try:
+    result = process.waitForProcess()
+    if fileExists(logPath):
+      result.output = readFile(logPath)
+  finally:
+    process.close()
 
 suite "restart persistence":
   test "separate processes read back persisted run bead stage":
@@ -115,4 +170,4 @@ suite "restart persistence":
       if read.exitCode != 0:
         echo read.output
       check read.exitCode == 0
-      check read.output.strip() == "restart-run restart-bead complete"
+      check read.output.strip() == "reader restart-run restart-bead complete then review"

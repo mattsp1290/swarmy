@@ -2,6 +2,7 @@ import std/strutils
 
 const SecretMarkers = [
   "authorization: bearer ",
+  "bearer ",
   "x-swarmy-token: ",
   "swarmy_token=",
   "auth_token=",

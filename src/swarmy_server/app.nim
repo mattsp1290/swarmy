@@ -865,11 +865,13 @@ proc runEvents(ctx: Context) {.gcsafe.} =
 
   let cursor = parseEventCursor(ctx.input("after", ""))
   if not cursor.ok:
+    logApiRequest(ctx, runId, 400)
     ctx.status(400).json(%*{"error": "invalid cursor", "param": "after"})
     return
 
   let limit = parseEventLimit(ctx.input("limit", ""))
   if not limit.ok:
+    logApiRequest(ctx, runId, 400)
     ctx.status(400).json(%*{"error": "invalid limit", "param": "limit"})
     return
 

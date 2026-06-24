@@ -34,7 +34,7 @@ proc parseArgs(args: seq[string]): tuple[ok: bool, options: DoctorOptions, error
   (true, result.options, "")
 
 proc recentErrorsReport(dbPath: string): string =
-  var store = openStore(dbPath)
+  var store = openReadOnlyStore(dbPath)
   try:
     var rows: seq[string]
     for row in store.db.iterate(

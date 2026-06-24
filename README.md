@@ -32,16 +32,21 @@ body over the configured limit receives `413`.
 The server emits structured, single-line logs to **stderr** (stdout stays clean
 for the JSON/CLI contract). Each API request is logged as `level=info msg="api
 request"` with a per-request `request_id`, the HTTP `method`, the `path`, the
-resolved `run_id`, and the response `status` (200 or 404). CLI stage writes emit
-a `msg="stage transition"` line carrying `run_id`, `bead_id`, `stage`,
-`event_id`, and `seq`. Secrets (tokens, bearer headers, `password=`, etc.) are
-passed through the shared redactor before logging, so values are emitted as
-`[REDACTED]` and never leak into logs.
+resolved `run_id`, and the response `status` (200, 400, or 404). CLI stage
+writes emit a `msg="stage transition"` line carrying `run_id`, `bead_id`,
+`stage`, `event_id`, and `seq`. Field values and messages are passed through the
+shared redactor, which masks recognized secret shapes (`token=`, `bearer <…>`,
+`authorization: bearer …`, `x-swarmy-token: …`, `password=`, and the matching
+JSON keys) as `[REDACTED]`. Redaction is marker-based, so callers should still
+avoid logging raw secret material that carries no recognized marker. Newlines and
+control characters in values are escaped, so a value can never forge a second log
+record.
 
 `swarmy doctor [--repo PATH]` prints a diagnostic report: the canonical repo
 path, initialization status, and (when initialized) the `run_id`, `db_path`,
 `db_path_trusted`, `config_path`, `created_at`, whether the database file is
-present, and up to the 10 most recent error rows. The entire report is run
-through the same redactor, so secrets embedded in error messages or paths are
-masked. It exits `0` even for an uninitialized repo (reporting that state), `1`
-on filesystem/database errors, and `2` on unexpected arguments.
+present, and up to the 10 most recent error rows. The database is opened
+read-only so the diagnostic does not mutate it. The entire report is run through
+the redactor described above. It exits `0` even for an uninitialized repo
+(reporting that state), `1` on filesystem/database errors, and `2` on unexpected
+arguments.

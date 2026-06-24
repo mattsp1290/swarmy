@@ -42,3 +42,19 @@ suite "structured logging":
   test "escapes embedded quotes in field values":
     let line = renderLogLine(lvlInfo, "msg", {"q": "has\"quote"})
     check "q=\"has\\\"quote\"" in line
+
+  test "escapes newlines so a value cannot forge a second log record":
+    let line = renderLogLine(lvlInfo, "api request", {
+      "path": "/runs/x\nlevel=error msg=\"forged\"",
+      "status": "200"
+    })
+    check "\n" notin line
+    check "\r" notin line
+    check "\\n" in line
+    # The forged content stays inside the quoted path field; status is intact.
+    check line.endsWith("status=200")
+
+  test "escapes control characters in the message":
+    let line = renderLogLine(lvlError, "boom\nlevel=info")
+    check "\n" notin line
+    check "\\n" in line

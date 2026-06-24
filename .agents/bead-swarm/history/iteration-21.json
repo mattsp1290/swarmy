@@ -1,0 +1,49 @@
+{
+  "schema_version": "bead-swarm-history-v1",
+  "iteration": 21,
+  "branch": "bead-swarm/iteration-21-smoke-harness",
+  "slug": "smoke-harness",
+  "main_branch": "main",
+  "main_branch_source": "default",
+  "selected_beads": ["swarmy-wow"],
+  "beads_done": ["swarmy-wow"],
+  "beads_blocked": [],
+  "beads_partial": [],
+  "merge_target": "main",
+  "validation": [
+    "nim c -r --path:src --path:tests --hints:off --verbosity:0 tests/test_smoke_harness.nim: pass",
+    "npm run test:smoke: pass",
+    "nimble test: pass",
+    "git diff --check: pass"
+  ],
+  "review_artifacts_local_only": true,
+  "review_blocker_summary": [
+    "Curie and Noether review agents could not run because the account hit the subagent usage limit",
+    "Local review requested running backend smoke from the repository root; resolved by cd-ing to ROOT in smoke_backend.sh",
+    "Local review requested avoiding same-second temp repo collisions; resolved with a per-process temp repo counter"
+  ],
+  "reviews": [
+    {
+      "reviewer": "Curie",
+      "verdict": "NOT_RUN usage limit",
+      "critical_count": 0,
+      "important_count": 0,
+      "moderate_count": 0
+    },
+    {
+      "reviewer": "Noether",
+      "verdict": "NOT_RUN usage limit",
+      "critical_count": 0,
+      "important_count": 0,
+      "moderate_count": 0
+    },
+    {
+      "reviewer": "local",
+      "verdict": "APPROVE after fixes",
+      "critical_count": 0,
+      "important_count": 0,
+      "moderate_count": 2
+    }
+  ],
+  "status": "complete"
+}

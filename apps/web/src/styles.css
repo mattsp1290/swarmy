@@ -220,13 +220,13 @@ h1 {
 
 .stage-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(7rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
   gap: 0.6rem;
   margin-bottom: 1rem;
 }
 
 .stage-column {
-  min-height: 4.25rem;
+  min-height: 16rem;
   border: 1px solid #c7d2d7;
   border-radius: 6px;
   background: #ffffff;
@@ -242,6 +242,57 @@ h1 {
 .detail-band header span {
   color: #52656e;
   font-weight: 800;
+}
+
+.stage-beads {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.7rem;
+}
+
+.stage-card {
+  display: grid;
+  gap: 0.65rem;
+  border: 1px solid #d3dde1;
+  border-radius: 6px;
+  background: #fbfcfc;
+  padding: 0.65rem;
+}
+
+.stage-card strong,
+.stage-card span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.stage-card > div > span,
+.stage-card footer,
+.stage-empty {
+  color: #52656e;
+  font-size: 0.8rem;
+}
+
+.stage-card footer {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.stage-card footer span:first-child {
+  width: fit-content;
+  border-radius: 999px;
+  background: #e5ecf0;
+  color: #31424a;
+  padding: 0.18rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.stage-empty {
+  margin-top: 0.7rem;
+  border: 1px dashed #c4d0d5;
+  border-radius: 6px;
+  background: #f8fafb;
+  padding: 0.65rem;
 }
 
 .detail-band {
@@ -322,12 +373,6 @@ h1 {
   border-radius: 6px;
   background: #f8fafb;
   padding: 0.85rem;
-}
-
-@media (max-width: 1040px) {
-  .stage-grid {
-    grid-template-columns: repeat(3, minmax(7rem, 1fr));
-  }
 }
 
 @media (max-width: 760px) {

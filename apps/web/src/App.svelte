@@ -8,7 +8,17 @@
     type RunSummary
   } from './api';
 
-  const stages = ['coding', 'validation', 'review', 'merge', 'blocked', 'complete'];
+  const stages = ['coding', 'validation', 'review', 'merge', 'blocked', 'complete', 'unknown'];
+  const stageLabels: Record<string, string> = {
+    coding: 'Coding',
+    validation: 'Validation',
+    review: 'Review',
+    merge: 'Merge',
+    blocked: 'Blocked',
+    complete: 'Complete',
+    unknown: 'Unknown',
+    unassigned: 'Unassigned'
+  };
 
   let runs: RunSummary[] = [];
   let selectedRunId = '';
@@ -30,10 +40,15 @@
   const stageFor = (bead: BeadSummary) =>
     bead.current_stage?.stage ?? bead.swarm_stage ?? 'unassigned';
 
-  const countStage = (stage: string) =>
-    selectedRun?.beads.filter((bead) => stageFor(bead) === stage).length ?? 0;
+  const beadsForStage = (stage: string) =>
+    selectedRun?.beads.filter((bead) => stageFor(bead) === stage) ?? [];
 
-  const visibleBeads = () => selectedRun?.beads.slice(0, 6) ?? [];
+  const agentName = (bead: BeadSummary) => bead.current_stage?.agent?.name ?? '';
+
+  const agentKind = (bead: BeadSummary) => bead.current_stage?.agent?.kind ?? '';
+
+  const unassignedBeads = () =>
+    selectedRun?.beads.filter((bead) => !stages.includes(stageFor(bead))) ?? [];
 
   const selectRun = async (runId: string) => {
     const requestId = detailRequest + 1;
@@ -173,12 +188,57 @@
         {#each stages as stage}
           <section class="stage-column" aria-label={stage}>
             <header>
-              <h3>{stage}</h3>
-              <span>{countStage(stage)}</span>
+              <h3>{stageLabels[stage]}</h3>
+              <span>{beadsForStage(stage).length}</span>
             </header>
+            {#if beadsForStage(stage).length === 0}
+              <div class="stage-empty">No beads</div>
+            {:else}
+              <div class="stage-beads">
+                {#each beadsForStage(stage) as bead}
+                  <article class="stage-card">
+                    <div>
+                      <strong>{bead.id}</strong>
+                      <span>{bead.title}</span>
+                    </div>
+                    <footer>
+                      <span>{bead.status}</span>
+                      {#if agentName(bead)}
+                        <span>{agentName(bead)}{agentKind(bead) ? ` / ${agentKind(bead)}` : ''}</span>
+                      {:else}
+                        <span>No agent</span>
+                      {/if}
+                    </footer>
+                  </article>
+                {/each}
+              </div>
+            {/if}
           </section>
         {/each}
       </div>
+
+      {#if unassignedBeads().length > 0}
+        <section class="detail-band" aria-label="Unassigned beads">
+          <header>
+            <h3>{stageLabels.unassigned}</h3>
+            <span>{unassignedBeads().length}</span>
+          </header>
+          <div class="bead-list">
+            {#each unassignedBeads() as bead}
+              <article class="bead-row">
+                <div>
+                  <strong>{bead.id}</strong>
+                  <span>{bead.title}</span>
+                </div>
+                <div class="bead-meta">
+                  <span>{bead.status}</span>
+                  <span>{bead.issue_type || 'bead'}</span>
+                </div>
+              </article>
+            {/each}
+          </div>
+        </section>
+      {/if}
 
       <section class="detail-band" aria-label="Beads">
         <header>
@@ -189,7 +249,7 @@
           <div class="empty-row">No beads in this run</div>
         {:else}
           <div class="bead-list">
-            {#each visibleBeads() as bead}
+            {#each selectedRun.beads as bead}
               <article class="bead-row">
                 <div>
                   <strong>{bead.id}</strong>

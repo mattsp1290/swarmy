@@ -34,6 +34,9 @@ proc response(line: string): JsonNode =
 proc toolPayload(node: JsonNode): JsonNode =
   parseJson(node["result"]["content"][0]["text"].getStr())
 
+proc isToolError(node: JsonNode): bool =
+  node["result"].hasKey("isError") and node["result"]["isError"].getBool
+
 proc scalarInt(store: Store, sql: string): int64 =
   store.db.value(sql).get.fromDbValue(int64)
 
@@ -94,8 +97,73 @@ suite "mcp stdio":
       finally:
         store.close()
 
-  test "unknown tools return structured tool errors":
-    let payload = response(callTool(1, "missing_tool", %*{})).toolPayload
+  test "unknown tools return JSON-RPC invalid params errors":
+    let node = response(callTool(1, "missing_tool", %*{}))
 
-    check not payload["ok"].getBool
-    check "unknown tool" in payload["error"].getStr
+    check node["error"]["code"].getInt == -32602
+    check "unknown tool" in node["error"]["message"].getStr
+
+  test "requests without ids do not execute tool side effects":
+    withTempRepo proc(repo, dbPath: string) =
+      let line = $(%*{
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {
+          "name": "swarmy_init",
+          "arguments": {"repo": repo, "db": dbPath}
+        }
+      })
+
+      check handleMcpLine(line).isNone
+      check not fileExists(repo / ".swarmy" / "run.json")
+      check not fileExists(dbPath)
+
+  test "null request ids are rejected":
+    let line = $(%*{
+      "jsonrpc": "2.0",
+      "id": nil,
+      "method": "tools/list",
+      "params": {}
+    })
+    let node = response(line)
+
+    check node["error"]["code"].getInt == -32600
+    check "must not be null" in node["error"]["message"].getStr
+
+  test "missing required MCP arguments return tool errors without cwd writes":
+    let original = getCurrentDir()
+    let dir = getTempDir() / "swarmy-mcp-cwd-test-" & $getCurrentProcessId() &
+      "-" & $epochTime().int
+    createDir(dir)
+    try:
+      setCurrentDir(dir)
+      let payload = response(callTool(1, "swarmy_init", %*{}))
+
+      check payload.isToolError
+      check "missing required argument `repo`" in payload.toolPayload["error"].getStr
+      check not fileExists(dir / ".swarmy" / "run.json")
+    finally:
+      setCurrentDir(original)
+      removeDir(dir)
+
+  test "non-object MCP arguments return tool errors":
+    let node = response(callTool(1, "swarmy_stage", %"not-an-object"))
+
+    check node.isToolError
+    check "arguments must be an object" in node.toolPayload["error"].getStr
+
+  test "snapshot reads do not initialize missing stores":
+    withTempRepo proc(repo, dbPath: string) =
+      discard response(callTool(1, "swarmy_init", %*{
+        "repo": repo,
+        "db": dbPath
+      })).toolPayload
+      check not fileExists(dbPath)
+
+      let node = response(callTool(2, "swarmy_snapshot", %*{
+        "repo": repo
+      }))
+
+      check node.isToolError
+      check "store not initialized" in node.toolPayload["error"].getStr
+      check not fileExists(dbPath)

@@ -9,8 +9,10 @@ import swarmy_core/[app, events, persistence, run_metadata]
 const
   McpProtocolVersion* = "2025-06-18"
 
-proc textResult(text: string): JsonNode =
-  %*{"content": [%*{"type": "text", "text": text}]}
+proc textResult(text: string, isError = false): JsonNode =
+  result = %*{"content": [%*{"type": "text", "text": text}]}
+  if isError:
+    result["isError"] = %true
 
 proc rpcResult(id, value: JsonNode): string =
   var response = newJObject()
@@ -42,6 +44,32 @@ proc optionalStringArg(args: JsonNode, name: string): Option[string] =
   else:
     none(string)
 
+proc toolError(name, error: string): JsonNode =
+  var payload = newJObject()
+  payload["ok"] = %false
+  payload["tool"] = %name
+  payload["error"] = %error
+  textResult(payload.pretty, isError = true)
+
+proc requireObjectArgs(toolName: string, args: JsonNode): Option[JsonNode] =
+  if args.kind == JObject:
+    return none(JsonNode)
+  some(toolError(toolName, toolName & ": arguments must be an object"))
+
+proc requireStringField(
+  toolName: string,
+  args: JsonNode,
+  name: string
+): tuple[ok: bool, value: string, error: JsonNode] =
+  if args.kind != JObject or not args.hasKey(name) or
+      args[name].kind != JString or args[name].getStr.len == 0:
+    return (
+      false,
+      "",
+      toolError(toolName, toolName & ": missing required argument `" & name & "`")
+    )
+  (true, args[name].getStr, newJNull())
+
 proc addOpt(result: var seq[string], flag: string, value: Option[string]) =
   if value.isSome:
     result.add flag
@@ -56,13 +84,6 @@ proc commonArgs(args: JsonNode): seq[string] =
   result.addOpt("--source", args.optionalStringArg("source"))
   result.addOpt("--at", args.optionalStringArg("at"))
 
-proc toolError(name, error: string): JsonNode =
-  var payload = newJObject()
-  payload["ok"] = %false
-  payload["tool"] = %name
-  payload["error"] = %error
-  textResult(payload.pretty)
-
 proc runCliTool(name: string, cliResult: auto): JsonNode =
   if cliResult.exitCode == 0:
     var payload = newJObject()
@@ -74,12 +95,27 @@ proc runCliTool(name: string, cliResult: auto): JsonNode =
     toolError(name, cliResult.error.strip())
 
 proc initTool(args: JsonNode): JsonNode =
+  let objectError = requireObjectArgs("swarmy_init", args)
+  if objectError.isSome:
+    return objectError.get
+  let repo = requireStringField("swarmy_init", args, "repo")
+  if not repo.ok:
+    return repo.error
+
   var cliArgs: seq[string]
-  cliArgs.addReq("--repo", args.stringArg("repo", "."))
+  cliArgs.addReq("--repo", repo.value)
   cliArgs.addOpt("--db", args.optionalStringArg("db"))
   runCliTool("swarmy_init", init_command.run(cliArgs))
 
 proc agentTool(args: JsonNode): JsonNode =
+  let objectError = requireObjectArgs("swarmy_agent", args)
+  if objectError.isSome:
+    return objectError.get
+  for name in ["repo", "event_id", "agent_id", "name"]:
+    let found = requireStringField("swarmy_agent", args, name)
+    if not found.ok:
+      return found.error
+
   var cliArgs = args.commonArgs()
   cliArgs.addReq("--event-id", args.stringArg("event_id"))
   cliArgs.addReq("--agent", args.stringArg("agent_id"))
@@ -89,6 +125,14 @@ proc agentTool(args: JsonNode): JsonNode =
   runCliTool("swarmy_agent", runAgent(cliArgs))
 
 proc stageTool(args: JsonNode): JsonNode =
+  let objectError = requireObjectArgs("swarmy_stage", args)
+  if objectError.isSome:
+    return objectError.get
+  for name in ["repo", "event_id", "bead_id", "stage"]:
+    let found = requireStringField("swarmy_stage", args, name)
+    if not found.ok:
+      return found.error
+
   var cliArgs = args.commonArgs()
   cliArgs.addReq("--event-id", args.stringArg("event_id"))
   cliArgs.addReq("--bead", args.stringArg("bead_id"))
@@ -98,25 +142,22 @@ proc stageTool(args: JsonNode): JsonNode =
   cliArgs.addOpt("--payload-json", args.optionalStringArg("payload_json"))
   runCliTool("swarmy_stage", runStage(cliArgs))
 
-proc insertRun(store: Store, metadata: RunMetadata) =
-  store.db.exec(
-    """
-    INSERT OR IGNORE INTO runs(run_id, repo_path, created_at, updated_at)
-    VALUES(?, ?, ?, ?)
-    """,
-    metadata.runId,
-    metadata.repoPath,
-    metadata.createdAt,
-    metadata.createdAt
-  )
-
 proc snapshotTool(args: JsonNode): JsonNode =
   try:
-    let repo = canonicalRepoPath(args.stringArg("repo", "."))
+    let objectError = requireObjectArgs("swarmy_snapshot", args)
+    if objectError.isSome:
+      return objectError.get
+    let repoArg = requireStringField("swarmy_snapshot", args, "repo")
+    if not repoArg.ok:
+      return repoArg.error
+
+    let repo = canonicalRepoPath(repoArg.value)
     let metadata = readRunMetadata(metadataPath(repo))
-    var store = initializeStore(metadata.dbPath)
+    if not fileExists(metadata.dbPath):
+      return toolError("swarmy_snapshot", "store not initialized: " & metadata.dbPath)
+
+    var store = openStore(metadata.dbPath)
     defer: store.close()
-    store.insertRun(metadata)
 
     var beads = newJArray()
     for row in store.db.iterate(
@@ -215,23 +256,32 @@ proc toolsList(): JsonNode =
     ]
   }
 
+proc knownTool(name: string): bool =
+  case name
+  of "swarmy_init", "swarmy_agent", "swarmy_stage", "swarmy_snapshot":
+    true
+  else:
+    false
+
 proc callTool(name: string, args: JsonNode): JsonNode =
   case name
-  of "swarmy_init":
-    initTool(args)
-  of "swarmy_agent":
-    agentTool(args)
-  of "swarmy_stage":
-    stageTool(args)
-  of "swarmy_snapshot":
-    snapshotTool(args)
-  else:
-    toolError(name, "unknown tool: " & name)
+  of "swarmy_init": initTool(args)
+  of "swarmy_agent": agentTool(args)
+  of "swarmy_stage": stageTool(args)
+  of "swarmy_snapshot": snapshotTool(args)
+  else: toolError(name, "unknown tool: " & name)
 
 proc handleMcpLine*(line: string): Option[string] =
   try:
     let request = parseJson(line)
-    let id = if request.hasKey("id"): request["id"] else: newJNull()
+    if request.kind != JObject or request{"jsonrpc"}.getStr() != "2.0" or
+        not request.hasKey("method"):
+      return some(rpcError(newJNull(), -32600, "invalid request"))
+    if not request.hasKey("id"):
+      return none(string)
+    let id = request["id"]
+    if id.kind == JNull:
+      return some(rpcError(newJNull(), -32600, "request id must not be null"))
     let methodName = request{"method"}.getStr()
 
     case methodName
@@ -249,6 +299,8 @@ proc handleMcpLine*(line: string): Option[string] =
         return some(rpcError(id, -32602, "tools/call requires params"))
       let name = params.stringArg("name")
       let args = if params.hasKey("arguments"): params["arguments"] else: newJObject()
+      if not knownTool(name):
+        return some(rpcError(id, -32602, "unknown tool: " & name))
       some(rpcResult(id, callTool(name, args)))
     else:
       if request.hasKey("id"):

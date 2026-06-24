@@ -1,0 +1,31 @@
+{
+  "schema_version": "bead-swarm-history-v1",
+  "iteration": 33,
+  "branch": "bead-swarm/iteration-33-ecosystem-requests-and-fallbacks",
+  "slug": "ecosystem-requests-and-fallbacks",
+  "main_branch": "main",
+  "main_branch_source": "default",
+  "execution_mode": "parent-degraded",
+  "degraded_reason": "Docs batch sharing AGENTS.md/README; written directly by the orchestrator (no parallel workers) because the two beads' write scopes overlap.",
+  "selected_beads": ["swarmy-yuf", "swarmy-9zz"],
+  "beads_done": ["swarmy-yuf", "swarmy-9zz"],
+  "beads_blocked": [],
+  "beads_partial": [],
+  "merge_target": "main",
+  "validation": [
+    "Doc accuracy verified against source: events cursor endpoint, MCP stdio surface/protocol/tools, research findings; all links + anchor resolve.",
+    "No code changed."
+  ],
+  "review_mode": "reviewer-subagents",
+  "review_assurance": "normal",
+  "findings_fixed_re_reviewed": false,
+  "review_artifacts_local_only": true,
+  "review_blocker_summary": [
+    "Both reviewers APPROVE (no Critical/Important). Applied cosmetic nit: :id -> :run_id in the cursor reference."
+  ],
+  "reviews": [
+    {"reviewer": "redowl", "verdict": "APPROVE", "artifact": "reviews/bead-swarm-iteration-33-ecosystem-requests-and-fallbacks/redowl/04-action-items.md"},
+    {"reviewer": "scout", "verdict": "APPROVE", "artifact": "reviews/bead-swarm-iteration-33-ecosystem-requests-and-fallbacks/scout/04-action-items.md"}
+  ],
+  "status": "complete"
+}

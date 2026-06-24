@@ -1,0 +1,29 @@
+{
+  "schema_version": "bead-swarm-history-v1",
+  "iteration": 34,
+  "branch": "bead-swarm/iteration-34-agent-facing-project-instructions",
+  "slug": "agent-facing-project-instructions",
+  "main_branch": "main",
+  "main_branch_source": "default",
+  "execution_mode": "parent-degraded",
+  "degraded_reason": "Single small docs change to AGENTS.md; written directly by the orchestrator.",
+  "selected_beads": ["swarmy-z9e"],
+  "beads_done": ["swarmy-z9e"],
+  "beads_blocked": [],
+  "beads_partial": [],
+  "merge_target": "main",
+  "validation": [
+    "Doc accuracy verified: anchors resolve, stage names match events.nim, bn/beans only as prohibitions, no contradiction with existing AGENTS.md.",
+    "No code changed."
+  ],
+  "review_mode": "reviewer-subagents",
+  "review_assurance": "normal",
+  "findings_fixed_re_reviewed": false,
+  "review_artifacts_local_only": true,
+  "review_blocker_summary": ["Both reviewers APPROVE, no findings."],
+  "reviews": [
+    {"reviewer": "redowl", "verdict": "APPROVE", "artifact": "reviews/bead-swarm-iteration-34-agent-facing-project-instructions/redowl/04-action-items.md"},
+    {"reviewer": "scout", "verdict": "APPROVE", "artifact": "reviews/bead-swarm-iteration-34-agent-facing-project-instructions/scout/04-action-items.md"}
+  ],
+  "status": "complete"
+}

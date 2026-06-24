@@ -19,7 +19,7 @@ Usage:
   swarmy agent --event-id ID --agent ID --name NAME [options]
   swarmy snapshot --source SOURCE --snapshot-json JSON [options]
   swarmy bead-swarm
-  swarmy serve [--host HOST] [--port PORT] [--static-dir PATH] [--repo PATH]
+  swarmy serve [--host HOST] [--port PORT] [--static-dir PATH] [--repo PATH] [--auth-token TOKEN] [--max-body-bytes BYTES]
   swarmy mcp
 """.strip(leading = false) & "\n"
 

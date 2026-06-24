@@ -53,6 +53,30 @@ suite "cli dispatch":
     check result.exitCode == 0
     check result.output == "swarmy serve: http://127.0.0.2:9090 static custom-dist\n"
 
+  test "serve command requires auth for non-loopback binds":
+    let result = run(@["serve", "--host", "0.0.0.0"])
+
+    check result.exitCode == 2
+    check result.output == ""
+    check "--auth-token or SWARMY_AUTH_TOKEN is required" in result.error
+
+    let dnsLookingLoopback = run(@["serve", "--host", "127.example.com"])
+    check dnsLookingLoopback.exitCode == 2
+    check "--auth-token or SWARMY_AUTH_TOKEN is required" in
+      dnsLookingLoopback.error
+
+  test "serve command accepts auth and payload limits":
+    let result = run(@[
+      "serve",
+      "--host", "0.0.0.0",
+      "--auth-token", "local-secret",
+      "--max-body-bytes", "4096"
+    ])
+
+    check result.exitCode == 0
+    check result.output ==
+      "swarmy serve: http://0.0.0.0:8080 static apps/web/dist auth required\n"
+
   test "serve command validates port":
     let result = run(@["serve", "--port", "70000"])
 
@@ -72,6 +96,14 @@ suite "cli dispatch":
     let invalidPort = run(@["serve", "--port", "not-a-port"])
     check invalidPort.exitCode == 2
     check "--port must be an integer" in invalidPort.error
+
+    let missingToken = run(@["serve", "--auth-token"])
+    check missingToken.exitCode == 2
+    check "--auth-token requires a value" in missingToken.error
+
+    let invalidBodyLimit = run(@["serve", "--max-body-bytes", "not-a-size"])
+    check invalidBodyLimit.exitCode == 2
+    check "--max-body-bytes must be an integer" in invalidBodyLimit.error
 
   test "init validates arguments before reaching metadata writes":
     let result = run(@["init", "--repo"])

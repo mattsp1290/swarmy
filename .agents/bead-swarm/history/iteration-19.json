@@ -1,0 +1,48 @@
+{
+  "schema_version": "bead-swarm-history-v1",
+  "iteration": 19,
+  "branch": "bead-swarm/iteration-19-local-auth-validation",
+  "slug": "local-auth-validation",
+  "main_branch": "main",
+  "main_branch_source": "default",
+  "selected_beads": ["swarmy-55y"],
+  "beads_done": ["swarmy-55y"],
+  "beads_blocked": [],
+  "beads_partial": [],
+  "merge_target": "main",
+  "validation": [
+    "nimble test --testName:test_cli_dispatch --verbose: pass",
+    "nimble test --testName:test_server_app --verbose: pass",
+    "npm exec --workspace apps/web tsc -- --noEmit: pass",
+    "nimble test: pass",
+    "nimble build: pass",
+    "npm run build --workspace apps/web: pass",
+    "tests/smoke_serve.sh: pass",
+    "git diff --check: pass"
+  ],
+  "review_artifacts_local_only": true,
+  "review_blocker_summary": [
+    "Ada requested strict loopback host validation instead of accepting any 127.* hostname; resolved with strict IPv4 loopback parsing and regression coverage",
+    "Ada and Turing requested server-layer unsafe bind/config rejection; resolved with exported server config validation before Jazzy.serve",
+    "Ada requested case-insensitive JSON media type validation including application/*+json; resolved with normalized media-type checks and coverage",
+    "Ada requested concrete high-entropy token generation guidance; resolved in README serve docs",
+    "Turing requested stronger payload-size handling than body length alone; resolved with Content-Length precheck plus actual body-length enforcement"
+  ],
+  "reviews": [
+    {
+      "reviewer": "Ada",
+      "verdict": "APPROVE after fixes",
+      "critical_count": 0,
+      "important_count": 4,
+      "moderate_count": 0
+    },
+    {
+      "reviewer": "Turing",
+      "verdict": "APPROVE after fixes",
+      "critical_count": 0,
+      "important_count": 2,
+      "moderate_count": 0
+    }
+  ],
+  "status": "complete"
+}

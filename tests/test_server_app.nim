@@ -103,14 +103,23 @@ proc insertAgent(
     metadataJson
   )
 
-proc dispatchGet(path: string): Context =
+proc dispatchRequest(
+  path: string,
+  httpMethod = HttpGet,
+  headers = newHttpHeaders(),
+  body = ""
+): Context =
   let req = JazzyRequest(
-    httpMethod: HttpGet,
+    body: body,
+    httpMethod: httpMethod,
     path: path,
-    headers: newHttpHeaders()
+    headers: headers
   )
   result = newContext(req)
   waitFor dispatch(result)
+
+proc dispatchGet(path: string): Context =
+  dispatchRequest(path)
 
 suite "server app":
   test "blocking serve fails fast when web build is missing":
@@ -146,6 +155,122 @@ suite "server app":
       check asset.response.code == 200
       check asset.response.headers["Content-Type"] == "text/javascript"
       check asset.response.body == "console.log('swarmy');"
+
+  test "server config rejects unsafe bind combinations":
+    let unsafeBind = server_app.validateServerConfig(ServerConfig(
+      address: "0.0.0.0",
+      port: 8080,
+      staticDir: "dist",
+      repoPath: ".",
+      authToken: "",
+      maxBodyBytes: 1024
+    ))
+    check unsafeBind.ok == false
+    check "--auth-token or SWARMY_AUTH_TOKEN is required" in unsafeBind.error
+
+    let dnsLookingLoopback = server_app.validateServerConfig(ServerConfig(
+      address: "127.example.com",
+      port: 8080,
+      staticDir: "dist",
+      repoPath: ".",
+      authToken: "",
+      maxBodyBytes: 1024
+    ))
+    check dnsLookingLoopback.ok == false
+
+    let invalidLimit = server_app.validateServerConfig(ServerConfig(
+      address: "127.0.0.1",
+      port: 8080,
+      staticDir: "dist",
+      repoPath: ".",
+      authToken: "",
+      maxBodyBytes: -1
+    ))
+    check invalidLimit.ok == false
+    check "maxBodyBytes must be zero or greater" in invalidLimit.error
+
+    let safeBind = server_app.validateServerConfig(ServerConfig(
+      address: "127.1.2.3",
+      port: 8080,
+      staticDir: "dist",
+      repoPath: ".",
+      authToken: "",
+      maxBodyBytes: 1024
+    ))
+    check safeBind.ok == true
+
+  test "auth metadata and static routes stay public under api auth":
+    withTempDist proc(dist: string) =
+      server_app.registerRoutes(dist, ".", authToken = "local-secret")
+
+      let auth = dispatchGet("/api/auth")
+      check auth.response.code == 200
+      let authPayload = parseJson(auth.response.body)
+      check authPayload["auth_required"].getBool == true
+      check authPayload["token_header"].getStr == "X-Swarmy-Token"
+      check authPayload["bearer_supported"].getBool == true
+
+      let health = dispatchGet("/api/health")
+      check health.response.code == 200
+
+      let index = dispatchGet("/")
+      check index.response.code == 200
+      check "<title>Swarmy</title>" in index.response.body
+
+  test "api data routes require configured local token":
+    withTempRepoAndDist proc(repo, dist, dbPath, runId: string) =
+      discard dbPath
+      discard runId
+      server_app.registerRoutes(dist, repo, authToken = "local-secret")
+
+      let anonymous = dispatchGet("/api/runs")
+      check anonymous.response.code == 401
+      check parseJson(anonymous.response.body)["error"].getStr == "unauthorized"
+
+      var headerToken = newHttpHeaders()
+      headerToken["X-Swarmy-Token"] = "local-secret"
+      let headerAuth = dispatchRequest("/api/runs", headers = headerToken)
+      check headerAuth.response.code == 200
+
+      var bearerToken = newHttpHeaders()
+      bearerToken["Authorization"] = "Bearer local-secret"
+      let bearerAuth = dispatchRequest("/api/runs", headers = bearerToken)
+      check bearerAuth.response.code == 200
+
+  test "api data routes reject oversized and invalid json payloads":
+    withTempRepoAndDist proc(repo, dist, dbPath, runId: string) =
+      discard dbPath
+      discard runId
+      server_app.registerRoutes(dist, repo, maxBodyBytes = 4)
+
+      let tooLarge = dispatchRequest("/api/runs", body = "12345")
+      check tooLarge.response.code == 413
+      let tooLargePayload = parseJson(tooLarge.response.body)
+      check tooLargePayload["error"].getStr == "payload too large"
+      check tooLargePayload["max_body_bytes"].getInt == 4
+
+      var lengthHeaders = newHttpHeaders()
+      lengthHeaders["Content-Length"] = "5"
+      let tooLargeByLength = dispatchRequest("/api/runs", headers = lengthHeaders)
+      check tooLargeByLength.response.code == 413
+
+      lengthHeaders["Content-Length"] = "not-a-size"
+      let invalidLength = dispatchRequest("/api/runs", headers = lengthHeaders)
+      check invalidLength.response.code == 400
+      check parseJson(invalidLength.response.body)["error"].getStr ==
+        "invalid Content-Length"
+
+      server_app.registerRoutes(dist, repo, maxBodyBytes = 100)
+      var jsonHeaders = newHttpHeaders()
+      jsonHeaders["Content-Type"] = "Application/Problem+JSON; charset=utf-8"
+      let invalidJson = dispatchRequest(
+        "/api/runs",
+        headers = jsonHeaders,
+        body = "{"
+      )
+      check invalidJson.response.code == 400
+      check parseJson(invalidJson.response.body)["error"].getStr ==
+        "invalid JSON payload"
 
   test "run endpoints stay read-only when configured store is absent":
     withTempRepoAndDist proc(repo, dist, dbPath, runId: string) =

@@ -13,9 +13,13 @@ type ServerConfig* = object
   port*: int
   staticDir*: string
   repoPath*: string
+  authToken*: string
+  maxBodyBytes*: int
 
 var staticRoot = ""
 var repoRoot = ""
+var apiAuthToken = ""
+var apiMaxBodyBytes = 1024 * 1024
 
 proc setStaticRoot(path: string) =
   {.cast(gcsafe).}:
@@ -33,11 +37,137 @@ proc currentRepoRoot(): string =
   {.cast(gcsafe).}:
     result = repoRoot
 
+proc setApiAuthToken(token: string) =
+  {.cast(gcsafe).}:
+    apiAuthToken = token
+
+proc currentApiAuthToken(): string =
+  {.cast(gcsafe).}:
+    result = apiAuthToken
+
+proc setApiMaxBodyBytes(maxBytes: int) =
+  {.cast(gcsafe).}:
+    apiMaxBodyBytes = maxBytes
+
+proc currentApiMaxBodyBytes(): int =
+  {.cast(gcsafe).}:
+    result = apiMaxBodyBytes
+
+proc isStrictIpv4Loopback(host: string): bool =
+  let parts = host.split(".")
+  if parts.len != 4 or parts[0] != "127":
+    return false
+
+  for part in parts:
+    if part.len == 0:
+      return false
+    for ch in part:
+      if ch < '0' or ch > '9':
+        return false
+    try:
+      let octet = parseInt(part)
+      if octet < 0 or octet > 255:
+        return false
+    except ValueError:
+      return false
+
+  true
+
+proc isLoopbackBindAddress*(host: string): bool =
+  let normalized = host.strip().toLowerAscii()
+  normalized == "localhost" or
+    normalized == "::1" or
+    normalized == "[::1]" or
+    normalized == "0:0:0:0:0:0:0:1" or
+    isStrictIpv4Loopback(normalized)
+
+proc validateServerConfig*(config: ServerConfig): tuple[ok: bool, error: string] =
+  if config.maxBodyBytes < 0:
+    return (
+      false,
+      "swarmy serve: maxBodyBytes must be zero or greater\n"
+    )
+  if config.authToken.len == 0 and not isLoopbackBindAddress(config.address):
+    return (
+      false,
+      "swarmy serve: --auth-token or SWARMY_AUTH_TOKEN is required when binding outside loopback\n"
+    )
+  (true, "")
+
+proc constantTimeEquals(a, b: string): bool =
+  if a.len != b.len:
+    return false
+
+  var diff = 0
+  for i in 0 ..< a.len:
+    diff = diff or (ord(a[i]) xor ord(b[i]))
+  diff == 0
+
+proc requestToken(ctx: Context): string =
+  if ctx.request.headers.hasKey("X-Swarmy-Token"):
+    return ctx.request.headers["X-Swarmy-Token"]
+
+  if ctx.request.headers.hasKey("Authorization"):
+    let value = ctx.request.headers["Authorization"]
+    if value.startsWith("Bearer "):
+      return value[7 .. ^1]
+
+  ""
+
+proc isJsonContentType(contentType: string): bool =
+  let mediaType = contentType.split(";")[0].strip().toLowerAscii()
+  mediaType == "application/json" or
+    (mediaType.startsWith("application/") and mediaType.endsWith("+json"))
+
+proc validateApiRequest(ctx: Context): bool =
+  let maxBytes = currentApiMaxBodyBytes()
+  let contentLength = ctx.request.headers.getOrDefault("Content-Length")
+  if maxBytes >= 0 and contentLength.len > 0:
+    try:
+      if parseInt(contentLength) > maxBytes:
+        ctx.status(413).json(%*{
+          "error": "payload too large",
+          "max_body_bytes": maxBytes
+        })
+        return false
+    except ValueError:
+      ctx.status(400).json(%*{"error": "invalid Content-Length"})
+      return false
+
+  if maxBytes >= 0 and ctx.request.body.len > maxBytes:
+    ctx.status(413).json(%*{
+      "error": "payload too large",
+      "max_body_bytes": maxBytes
+    })
+    return false
+
+  let contentType = ctx.request.headers.getOrDefault("Content-Type")
+  if ctx.request.body.len > 0 and isJsonContentType(contentType):
+    try:
+      discard parseJson(ctx.request.body)
+    except JsonParsingError:
+      ctx.status(400).json(%*{"error": "invalid JSON payload"})
+      return false
+
+  let token = currentApiAuthToken()
+  if token.len > 0 and not constantTimeEquals(ctx.requestToken(), token):
+    ctx.status(401).json(%*{"error": "unauthorized"})
+    return false
+
+  true
+
 proc health(ctx: Context) {.gcsafe.} =
   ctx.json(%*{
     "status": "ok",
     "name": core_app.Name,
     "version": core_app.Version
+  })
+
+proc authConfig(ctx: Context) {.gcsafe.} =
+  ctx.json(%*{
+    "auth_required": currentApiAuthToken().len > 0,
+    "token_header": "X-Swarmy-Token",
+    "bearer_supported": true
   })
 
 proc appIndex(ctx: Context) {.gcsafe.} =
@@ -293,6 +423,9 @@ proc runErrors(store: Store, runId: string): JsonNode =
     }
 
 proc listRuns(ctx: Context) {.gcsafe.} =
+  if not validateApiRequest(ctx):
+    return
+
   let repoPath = currentRepoRoot()
   let maybeStore = openConfiguredStore()
   if maybeStore.isNone:
@@ -342,6 +475,9 @@ proc listRuns(ctx: Context) {.gcsafe.} =
   ctx.json(%*{"source_repo": repoPath, "runs": runs})
 
 proc runDetail(ctx: Context) {.gcsafe.} =
+  if not validateApiRequest(ctx):
+    return
+
   let runId = ctx.param("run_id")
   let maybeStore = openConfiguredStore()
   if maybeStore.isNone:
@@ -396,6 +532,9 @@ proc runDetail(ctx: Context) {.gcsafe.} =
   ctx.json(payload)
 
 proc runBeads(ctx: Context) {.gcsafe.} =
+  if not validateApiRequest(ctx):
+    return
+
   let runId = ctx.param("run_id")
   let maybeStore = openConfiguredStore()
   if maybeStore.isNone:
@@ -428,6 +567,9 @@ proc runBeads(ctx: Context) {.gcsafe.} =
   ctx.json(%*{"run_id": runId, "beads": beads})
 
 proc beadDetail(ctx: Context) {.gcsafe.} =
+  if not validateApiRequest(ctx):
+    return
+
   let runId = ctx.param("run_id")
   let beadId = ctx.param("bead_id")
   let maybeStore = openConfiguredStore()
@@ -483,6 +625,9 @@ proc beadDetail(ctx: Context) {.gcsafe.} =
   ctx.json(payload)
 
 proc runAgents(ctx: Context) {.gcsafe.} =
+  if not validateApiRequest(ctx):
+    return
+
   let runId = ctx.param("run_id")
   let maybeStore = openConfiguredStore()
   if maybeStore.isNone:
@@ -515,6 +660,9 @@ proc runAgents(ctx: Context) {.gcsafe.} =
   ctx.json(%*{"run_id": runId, "agents": agents})
 
 proc agentDetail(ctx: Context) {.gcsafe.} =
+  if not validateApiRequest(ctx):
+    return
+
   let runId = ctx.param("run_id")
   let agentId = ctx.param("agent_id")
   let maybeStore = openConfiguredStore()
@@ -586,6 +734,9 @@ proc agentDetail(ctx: Context) {.gcsafe.} =
   ctx.json(payload)
 
 proc runStages(ctx: Context) {.gcsafe.} =
+  if not validateApiRequest(ctx):
+    return
+
   let runId = ctx.param("run_id")
   let maybeStore = openConfiguredStore()
   if maybeStore.isNone:
@@ -621,10 +772,18 @@ proc runStages(ctx: Context) {.gcsafe.} =
 
   ctx.json(%*{"run_id": runId, "stages": stages})
 
-proc registerRoutes*(staticDir: string, repoPath = ".") =
+proc registerRoutes*(
+  staticDir: string,
+  repoPath = ".",
+  authToken = "",
+  maxBodyBytes = 1024 * 1024
+) =
   setStaticRoot(staticDir)
   setRepoRoot(repoPath)
+  setApiAuthToken(authToken)
+  setApiMaxBodyBytes(maxBodyBytes)
   Route.get("/api/health", health)
+  Route.get("/api/auth", authConfig)
   Route.get("/api/runs", listRuns)
   Route.get("/api/runs/:run_id/beads", runBeads)
   Route.get("/api/runs/:run_id/beads/:bead_id", beadDetail)
@@ -636,6 +795,15 @@ proc registerRoutes*(staticDir: string, repoPath = ".") =
   Route.get("/assets/:file", appAsset)
 
 proc serve*(config: ServerConfig) =
-  registerRoutes(config.staticDir, config.repoPath)
+  let validConfig = validateServerConfig(config)
+  if not validConfig.ok:
+    raise newException(ValueError, validConfig.error.strip())
+
+  registerRoutes(
+    config.staticDir,
+    config.repoPath,
+    config.authToken,
+    config.maxBodyBytes
+  )
   prepareConfiguredStore(currentRepoRoot())
   Jazzy.serve(config.port, config.address)

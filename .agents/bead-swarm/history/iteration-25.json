@@ -1,0 +1,33 @@
+{
+  "schema_version": "bead-swarm-history-v1",
+  "iteration": 25,
+  "branch": "bead-swarm/iteration-25-backend-test-coverage-audit",
+  "slug": "backend-test-coverage-audit",
+  "main_branch": "main",
+  "main_branch_source": "default",
+  "execution_mode": "orchestrator-subagent",
+  "degraded_reason": null,
+  "selected_beads": ["swarmy-9kh"],
+  "beads_done": ["swarmy-9kh"],
+  "beads_blocked": [],
+  "beads_partial": [],
+  "merge_target": "main",
+  "validation": [
+    "nimble test: PASS (119 cases across 16 suites, incl. 2 new allowlist tests)",
+    "nimble build: PASS"
+  ],
+  "review_mode": "reviewer-subagents",
+  "review_assurance": "normal",
+  "findings_fixed_re_reviewed": true,
+  "review_artifacts_local_only": true,
+  "review_blocker_summary": [
+    "Coverage audit: all 7 acceptance items already covered by existing suite; no genuine gaps.",
+    "One untested security control (bd read-only allowlist) closed with exported predicate + unit tests."
+  ],
+  "reviews": [
+    {"reviewer": "redowl", "verdict": "APPROVE", "artifact": "reviews/bead-swarm-iteration-25-backend-test-coverage-audit/redowl/04-action-items.md"},
+    {"reviewer": "scout", "verdict": "APPROVE", "artifact": "reviews/bead-swarm-iteration-25-backend-test-coverage-audit/scout/04-action-items.md"}
+  ],
+  "status": "complete",
+  "notes": "Largely already-satisfied (see coverage-audit.md); merged a validated incremental gap-fill rather than a metadata-only iteration."
+}

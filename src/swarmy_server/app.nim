@@ -374,7 +374,7 @@ proc parseEventCursor(raw: string): tuple[ok: bool, value: int64] =
     let value = parseBiggestInt(raw)
     if value < 0:
       return (false, 0'i64)
-    (true, value.int64)
+    (true, value)
   except ValueError:
     (false, 0'i64)
 
@@ -887,6 +887,9 @@ proc runEvents(ctx: Context) {.gcsafe.} =
   var nextCursor = cursor.value
   if events.len > 0:
     nextCursor = events[^1]["seq"].getBiggestInt
+  elif nextCursor > latestSeq:
+    # Client over-shot past the head; converge back so polling stays bounded.
+    nextCursor = latestSeq
 
   ctx.json(%*{
     "run_id": runId,

@@ -641,6 +641,25 @@ suite "server app":
       check badCursor.response.code == 400
       check parseJson(badCursor.response.body)["param"].getStr == "after"
 
+      let badCursorText = dispatchQuery(
+        "/api/runs/" & runId & "/events",
+        {"after": "abc"}
+      )
+      check badCursorText.response.code == 400
+      check parseJson(badCursorText.response.body)["param"].getStr == "after"
+
+      # An over-shot cursor returns nothing and converges back to the head.
+      let overshoot = dispatchQuery(
+        "/api/runs/" & runId & "/events",
+        {"after": "999"}
+      )
+      check overshoot.response.code == 200
+      let overshootPayload = parseJson(overshoot.response.body)
+      check overshootPayload["events"].len == 0
+      check overshootPayload["has_more"].getBool == false
+      check overshootPayload["next_cursor"].getInt == 3
+      check overshootPayload["latest_seq"].getInt == 3
+
       let badLimitZero = dispatchQuery(
         "/api/runs/" & runId & "/events",
         {"limit": "0"}

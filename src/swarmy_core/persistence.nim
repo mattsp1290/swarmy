@@ -11,6 +11,48 @@ type
     path*: string
     db*: DbConn
 
+proc optionString(row: ResultRow, column: string): Option[string] =
+  let value = row[column]
+  if value.kind == sqliteNull:
+    none(string)
+  else:
+    some(value.fromDbValue(string))
+
+proc sameEventContent(
+  row: ResultRow,
+  runId: string,
+  occurredAt: string,
+  source: string,
+  eventType: string,
+  beadId: Option[string],
+  agentId: Option[string],
+  stage: Option[string],
+  payloadJson: string
+): bool =
+  row["run_id"].fromDbValue(string) == runId and
+    row["occurred_at"].fromDbValue(string) == occurredAt and
+    row["source"].fromDbValue(string) == source and
+    row["event_type"].fromDbValue(string) == eventType and
+    row.optionString("bead_id") == beadId and
+    row.optionString("agent_id") == agentId and
+    row.optionString("stage") == stage and
+    row["payload_json"].fromDbValue(string) == payloadJson
+
+proc validateEventAgentRun(store: Store, runId: string, agentId: Option[string]) =
+  if agentId.isNone:
+    return
+
+  let found = store.db.value(
+    "SELECT COUNT(*) FROM agents WHERE run_id = ? AND agent_id = ?",
+    runId,
+    agentId.get
+  ).get.fromDbValue(int64)
+  if found == 0:
+    raise newException(
+      ValueError,
+      "agent does not belong to run: " & agentId.get
+    )
+
 const StoreSchema = """
 CREATE TABLE IF NOT EXISTS schema_migrations (
   version INTEGER PRIMARY KEY,
@@ -180,25 +222,47 @@ proc appendEvent*(
   payloadJson = "{}"
 ): int64 =
   store.db.transaction:
+    store.validateEventAgentRun(runId, agentId)
     store.db.exec(
       "INSERT OR IGNORE INTO event_cursors(run_id, next_seq) VALUES(?, 1)",
       runId
     )
 
     let existing = store.db.one(
-      "SELECT run_id, seq FROM events WHERE event_id = ?",
+      """
+      SELECT run_id, seq, occurred_at, source, event_type,
+        bead_id, agent_id, stage, payload_json
+      FROM events
+      WHERE event_id = ?
+      """,
       eventId
     )
     if existing.isSome:
       let row = existing.get
-      if row["run_id"].fromDbValue(string) != runId:
-        raise newException(ValueError, "event id already exists for another run: " & eventId)
+      if not row.sameEventContent(
+        runId,
+        occurredAt,
+        source,
+        eventType,
+        beadId,
+        agentId,
+        stage,
+        payloadJson
+      ):
+        raise newException(
+          ValueError,
+          "event id already exists with different event content: " & eventId
+        )
       result = row["seq"].fromDbValue(int64)
     else:
       let seq = store.db.value(
         "SELECT next_seq FROM event_cursors WHERE run_id = ?",
         runId
       ).get.fromDbValue(int64)
+      let params = toDbValues(
+        eventId, runId, seq, occurredAt, source, eventType,
+        beadId, agentId, stage, payloadJson
+      )
       store.db.exec(
         """
         INSERT INTO events(
@@ -207,8 +271,7 @@ proc appendEvent*(
         )
         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        eventId, runId, seq, occurredAt, source, eventType,
-        beadId, agentId, stage, payloadJson
+        params
       )
       store.db.exec(
         "UPDATE event_cursors SET next_seq = next_seq + 1 WHERE run_id = ?",

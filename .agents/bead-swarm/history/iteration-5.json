@@ -1,0 +1,50 @@
+{
+  "schema_version": "bead-swarm-history-v1",
+  "iteration": 5,
+  "branch": "bead-swarm/iteration-5-record-stage-events",
+  "slug": "record-stage-events",
+  "main_branch": "main",
+  "main_branch_source": "default",
+  "selected_beads": ["swarmy-3p0"],
+  "beads_done": ["swarmy-3p0"],
+  "beads_blocked": [],
+  "beads_partial": [],
+  "merge_target": "main",
+  "validation": [
+    "nimble test: pass",
+    "nimble build: pass",
+    "npm ci: pass",
+    "npm run build --workspace apps/web: pass",
+    "npm run build: pass",
+    "nimble buildAll: pass",
+    "git diff --check main...HEAD: pass",
+    "nim check --path:src src/swarmy_core/events.nim: pass",
+    "nim check --path:src tests/test_events.nim: pass",
+    "nim check --path:src tests/test_persistence.nim: pass"
+  ],
+  "review_artifacts_local_only": true,
+  "review_blocker_summary": [
+    "stage-event-idempotency requested run-scoped agent provenance for appendEvent; resolved with generic store validation and direct persistence tests",
+    "stage-event-idempotency requested duplicate-event conflict handling; resolved with immutable event-content comparison",
+    "stage-reducer-determinism requested duplicate event IDs with conflicting bead/stage content to fail; resolved with ValueError and regression tests"
+  ],
+  "reviews": [
+    {
+      "reviewer": "stage-event-idempotency",
+      "verdict": "APPROVE",
+      "artifact": "reviews/bead-swarm-iteration-5-record-stage-events-2026-06-24/stage-event-idempotency/findings.md",
+      "latest_head_addendum": "reviews/bead-swarm-iteration-5-record-stage-events-2026-06-24/stage-event-idempotency/final-addendum.md",
+      "critical_count": 0,
+      "important_count": 2
+    },
+    {
+      "reviewer": "stage-reducer-determinism",
+      "verdict": "APPROVE",
+      "artifact": "reviews/bead-swarm-iteration-5-record-stage-events-2026-06-24/stage-reducer-determinism/findings.md",
+      "latest_head_addendum": "reviews/bead-swarm-iteration-5-record-stage-events-2026-06-24/stage-reducer-determinism/addendum.md",
+      "critical_count": 0,
+      "important_count": 1
+    }
+  ],
+  "status": "complete"
+}

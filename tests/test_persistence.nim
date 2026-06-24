@@ -235,3 +235,38 @@ suite "persistence":
         VALUES('run-1', 'swarmy-0g2', 'review', '2026-06-24T00:00:02Z', 'event-1')
         """
       )
+
+  test "appendEvent rejects agents outside the event run before cursor allocation":
+    withTempStore proc(store: Store, path: string) =
+      discard path
+      store.insertRun("run-1")
+      store.insertRun("run-2")
+      store.db.exec(
+        """
+        INSERT INTO agents(agent_id, run_id, name, created_at, updated_at)
+        VALUES('agent-2', 'run-2', 'other-run-agent', '2026-06-24T00:00:00Z', '2026-06-24T00:00:00Z')
+        """
+      )
+
+      expect ValueError:
+        discard store.appendEvent(
+          "event-1",
+          "run-1",
+          "2026-06-24T00:00:01Z",
+          "test",
+          "agent.event",
+          agentId = some("agent-2")
+        )
+
+      expect ValueError:
+        discard store.appendEvent(
+          "event-2",
+          "run-1",
+          "2026-06-24T00:00:01Z",
+          "test",
+          "agent.event",
+          agentId = some("missing-agent")
+        )
+
+      check store.scalarInt("SELECT COUNT(*) FROM events") == 0
+      check store.scalarInt("SELECT COUNT(*) FROM event_cursors") == 0

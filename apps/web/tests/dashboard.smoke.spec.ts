@@ -106,9 +106,9 @@ const json = (body: unknown) => ({
 });
 
 // Stub /api/runs (list), /api/runs/<id> (detail) and /api/runs/<id>/events
-// (timeline). Playwright evaluates routes in reverse registration order
-// (last-registered wins), and the detail glob also matches the events URL, so
-// the events route is registered LAST to take precedence for that request.
+// (timeline). The three globs are non-overlapping — Playwright's `*` does not
+// cross a `/`, so `**/api/runs/*` matches only the bare detail path and not the
+// `.../events` path — so registration order is irrelevant for correctness.
 async function stubHappyApi(page: Page): Promise<void> {
   await page.route('**/api/runs', (route) =>
     route.fulfill(json({ source_repo: '/Users/dev/git/swarmy', runs: [RUN_SUMMARY] }))

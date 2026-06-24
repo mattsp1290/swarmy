@@ -1,0 +1,36 @@
+{
+  "schema_version": "bead-swarm-history-v1",
+  "iteration": 23,
+  "branch": "bead-swarm/iteration-23-production-logging-and-diagnostics",
+  "slug": "production-logging-and-diagnostics",
+  "main_branch": "main",
+  "main_branch_source": "default",
+  "execution_mode": "orchestrator-subagent",
+  "degraded_reason": null,
+  "selected_beads": ["swarmy-513"],
+  "beads_done": ["swarmy-513"],
+  "beads_blocked": [],
+  "beads_partial": [],
+  "merge_target": "main",
+  "validation": [
+    "nimble test: PASS (all suites, incl. new structured logging + swarmy doctor)",
+    "nimble build: PASS",
+    "runtime: swarmy doctor + stage-transition logging exercised manually",
+    "runtime: doctor read-only open adds no DB sidecar files"
+  ],
+  "review_mode": "reviewer-subagents",
+  "review_assurance": "normal",
+  "findings_fixed_re_reviewed": true,
+  "review_artifacts_local_only": true,
+  "review_blocker_summary": [
+    "round1: log-record forgery (newline escaping) - FIXED",
+    "round1: bare 'Bearer <token>' not redacted - FIXED (bearer marker)",
+    "round1: doctor mutated DB via WAL pragma - FIXED (openReadOnlyStore)",
+    "round1: 400 responses unlogged - FIXED"
+  ],
+  "reviews": [
+    {"reviewer": "redowl", "verdict": "REQUEST_CHANGES->APPROVE (re-review)", "artifact": "reviews/bead-swarm-iteration-23-production-logging-and-diagnostics/redowl/04-action-items.md"},
+    {"reviewer": "scout", "verdict": "REQUEST_CHANGES (round1)", "artifact": "reviews/bead-swarm-iteration-23-production-logging-and-diagnostics/scout/04-action-items.md"}
+  ],
+  "status": "complete"
+}

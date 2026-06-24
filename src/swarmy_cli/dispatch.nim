@@ -1,6 +1,6 @@
 import std/strutils
 
-import swarmy_cli/[event_commands, guidance, init, mcp, serve]
+import swarmy_cli/[doctor, event_commands, guidance, init, mcp, serve]
 import swarmy_cli/dispatch_types
 import swarmy_core/app
 
@@ -21,6 +21,7 @@ Usage:
   swarmy bead-swarm
   swarmy serve [--host HOST] [--port PORT] [--static-dir PATH] [--repo PATH] [--auth-token TOKEN] [--max-body-bytes BYTES]
   swarmy mcp
+  swarmy doctor [--repo PATH]
 """.strip(leading = false) & "\n"
 
 proc run*(args: seq[string]): CliResult =
@@ -46,6 +47,8 @@ proc run*(args: seq[string]): CliResult =
     serve.run(args[1 .. ^1])
   of "mcp":
     mcp.run(args[1 .. ^1])
+  of "doctor":
+    doctor.run(args[1 .. ^1])
   else:
     CliResult(
       exitCode: 2,

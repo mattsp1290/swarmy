@@ -201,6 +201,15 @@ proc openStore*(path: string): Store =
   db.exec("PRAGMA foreign_keys=ON")
   Store(path: path, db: db)
 
+proc openReadOnlyStore*(path: string): Store =
+  ## Opens an existing store read-only for diagnostics. Unlike openStore it does
+  ## not switch journal modes or otherwise mutate the database file.
+  if path != ":memory:" and symlinkExists(path):
+    raise newException(ValueError, "store path must not be a symlink: " & path)
+  let db = openDatabase(path, mode = dbRead)
+  db.exec("PRAGMA busy_timeout = " & $DefaultBusyTimeoutMs)
+  Store(path: path, db: db)
+
 proc initializeSchema*(store: Store) =
   store.db.execScript(StoreSchema)
 

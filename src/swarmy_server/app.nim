@@ -5,6 +5,7 @@ import tiny_sqlite
 
 import swarmy_core/app as core_app
 import swarmy_core/events
+import swarmy_core/logging
 import swarmy_core/persistence
 import swarmy_core/run_metadata
 
@@ -260,6 +261,16 @@ proc optionString(row: ResultRow, column: system.string): Option[system.string] 
   else:
     some(value.fromDbValue(system.string))
 
+proc logApiRequest(ctx: Context, runId: string, status: int) =
+  {.cast(gcsafe).}:
+    emitLog(lvlInfo, "api request", {
+      "request_id": ctx.requestId,
+      "method": $ctx.request.httpMethod,
+      "path": ctx.request.path,
+      "run_id": runId,
+      "status": $status
+    })
+
 proc notFound(ctx: Context, kind, id: string) {.gcsafe.} =
   ctx.status(404).json(%*{"error": kind & " not found", "id": id})
 
@@ -481,6 +492,7 @@ proc listRuns(ctx: Context) {.gcsafe.} =
   let repoPath = currentRepoRoot()
   let maybeStore = openConfiguredStore()
   if maybeStore.isNone:
+    logApiRequest(ctx, "", 200)
     ctx.json(%*{"source_repo": repoPath, "runs": []})
     return
 
@@ -524,6 +536,7 @@ proc listRuns(ctx: Context) {.gcsafe.} =
   ):
     runs.add row.runSummary()
 
+  logApiRequest(ctx, "", 200)
   ctx.json(%*{"source_repo": repoPath, "runs": runs})
 
 proc runDetail(ctx: Context) {.gcsafe.} =
@@ -533,6 +546,7 @@ proc runDetail(ctx: Context) {.gcsafe.} =
   let runId = ctx.param("run_id")
   let maybeStore = openConfiguredStore()
   if maybeStore.isNone:
+    logApiRequest(ctx, runId, 404)
     ctx.status(404).json(%*{"error": "run not found", "run_id": runId})
     return
 
@@ -541,6 +555,7 @@ proc runDetail(ctx: Context) {.gcsafe.} =
 
   let summary = store.findRunSummary(runId)
   if summary.isNone:
+    logApiRequest(ctx, runId, 404)
     ctx.status(404).json(%*{"error": "run not found", "run_id": runId})
     return
 
@@ -581,6 +596,7 @@ proc runDetail(ctx: Context) {.gcsafe.} =
   payload["agents"] = agents
   payload["errors"] = store.runErrors(runId)
 
+  logApiRequest(ctx, runId, 200)
   ctx.json(payload)
 
 proc runBeads(ctx: Context) {.gcsafe.} =
@@ -590,6 +606,7 @@ proc runBeads(ctx: Context) {.gcsafe.} =
   let runId = ctx.param("run_id")
   let maybeStore = openConfiguredStore()
   if maybeStore.isNone:
+    logApiRequest(ctx, runId, 404)
     ctx.status(404).json(%*{"error": "run not found", "run_id": runId})
     return
 
@@ -597,6 +614,7 @@ proc runBeads(ctx: Context) {.gcsafe.} =
   defer: store.close()
 
   if store.findRunSummary(runId).isNone:
+    logApiRequest(ctx, runId, 404)
     ctx.status(404).json(%*{"error": "run not found", "run_id": runId})
     return
 
@@ -616,6 +634,7 @@ proc runBeads(ctx: Context) {.gcsafe.} =
   ):
     beads.add store.beadNode(row)
 
+  logApiRequest(ctx, runId, 200)
   ctx.json(%*{"run_id": runId, "beads": beads})
 
 proc beadDetail(ctx: Context) {.gcsafe.} =
@@ -626,6 +645,7 @@ proc beadDetail(ctx: Context) {.gcsafe.} =
   let beadId = ctx.param("bead_id")
   let maybeStore = openConfiguredStore()
   if maybeStore.isNone:
+    logApiRequest(ctx, runId, 404)
     notFound(ctx, "bead", beadId)
     return
 
@@ -633,6 +653,7 @@ proc beadDetail(ctx: Context) {.gcsafe.} =
   defer: store.close()
 
   if store.findRunSummary(runId).isNone:
+    logApiRequest(ctx, runId, 404)
     ctx.status(404).json(%*{"error": "run not found", "run_id": runId})
     return
 
@@ -650,6 +671,7 @@ proc beadDetail(ctx: Context) {.gcsafe.} =
     beadId
   )
   if row.isNone:
+    logApiRequest(ctx, runId, 404)
     notFound(ctx, "bead", beadId)
     return
 
@@ -674,6 +696,7 @@ proc beadDetail(ctx: Context) {.gcsafe.} =
     stages.add stage.stageNode()
   payload["stage_events"] = stages
 
+  logApiRequest(ctx, runId, 200)
   ctx.json(payload)
 
 proc runAgents(ctx: Context) {.gcsafe.} =
@@ -683,6 +706,7 @@ proc runAgents(ctx: Context) {.gcsafe.} =
   let runId = ctx.param("run_id")
   let maybeStore = openConfiguredStore()
   if maybeStore.isNone:
+    logApiRequest(ctx, runId, 404)
     ctx.status(404).json(%*{"error": "run not found", "run_id": runId})
     return
 
@@ -690,6 +714,7 @@ proc runAgents(ctx: Context) {.gcsafe.} =
   defer: store.close()
 
   if store.findRunSummary(runId).isNone:
+    logApiRequest(ctx, runId, 404)
     ctx.status(404).json(%*{"error": "run not found", "run_id": runId})
     return
 
@@ -709,6 +734,7 @@ proc runAgents(ctx: Context) {.gcsafe.} =
   ):
     agents.add row.agentSummaryFromRow()
 
+  logApiRequest(ctx, runId, 200)
   ctx.json(%*{"run_id": runId, "agents": agents})
 
 proc agentDetail(ctx: Context) {.gcsafe.} =
@@ -719,6 +745,7 @@ proc agentDetail(ctx: Context) {.gcsafe.} =
   let agentId = ctx.param("agent_id")
   let maybeStore = openConfiguredStore()
   if maybeStore.isNone:
+    logApiRequest(ctx, runId, 404)
     notFound(ctx, "agent", agentId)
     return
 
@@ -726,6 +753,7 @@ proc agentDetail(ctx: Context) {.gcsafe.} =
   defer: store.close()
 
   if store.findRunSummary(runId).isNone:
+    logApiRequest(ctx, runId, 404)
     ctx.status(404).json(%*{"error": "run not found", "run_id": runId})
     return
 
@@ -743,6 +771,7 @@ proc agentDetail(ctx: Context) {.gcsafe.} =
     agentId
   )
   if row.isNone:
+    logApiRequest(ctx, runId, 404)
     notFound(ctx, "agent", agentId)
     return
 
@@ -783,6 +812,7 @@ proc agentDetail(ctx: Context) {.gcsafe.} =
     }
   payload["current_beads"] = currentBeads
 
+  logApiRequest(ctx, runId, 200)
   ctx.json(payload)
 
 proc runStages(ctx: Context) {.gcsafe.} =
@@ -792,6 +822,7 @@ proc runStages(ctx: Context) {.gcsafe.} =
   let runId = ctx.param("run_id")
   let maybeStore = openConfiguredStore()
   if maybeStore.isNone:
+    logApiRequest(ctx, runId, 404)
     ctx.status(404).json(%*{"error": "run not found", "run_id": runId})
     return
 
@@ -799,6 +830,7 @@ proc runStages(ctx: Context) {.gcsafe.} =
   defer: store.close()
 
   if store.findRunSummary(runId).isNone:
+    logApiRequest(ctx, runId, 404)
     ctx.status(404).json(%*{"error": "run not found", "run_id": runId})
     return
 
@@ -822,6 +854,7 @@ proc runStages(ctx: Context) {.gcsafe.} =
     node["bead_id"] = %row["bead_id"].fromDbValue(string)
     stages.add node
 
+  logApiRequest(ctx, runId, 200)
   ctx.json(%*{"run_id": runId, "stages": stages})
 
 proc runEvents(ctx: Context) {.gcsafe.} =
@@ -832,16 +865,19 @@ proc runEvents(ctx: Context) {.gcsafe.} =
 
   let cursor = parseEventCursor(ctx.input("after", ""))
   if not cursor.ok:
+    logApiRequest(ctx, runId, 400)
     ctx.status(400).json(%*{"error": "invalid cursor", "param": "after"})
     return
 
   let limit = parseEventLimit(ctx.input("limit", ""))
   if not limit.ok:
+    logApiRequest(ctx, runId, 400)
     ctx.status(400).json(%*{"error": "invalid limit", "param": "limit"})
     return
 
   let maybeStore = openConfiguredStore()
   if maybeStore.isNone:
+    logApiRequest(ctx, runId, 404)
     ctx.status(404).json(%*{"error": "run not found", "run_id": runId})
     return
 
@@ -849,6 +885,7 @@ proc runEvents(ctx: Context) {.gcsafe.} =
   defer: store.close()
 
   if store.findRunSummary(runId).isNone:
+    logApiRequest(ctx, runId, 404)
     ctx.status(404).json(%*{"error": "run not found", "run_id": runId})
     return
 
@@ -891,6 +928,7 @@ proc runEvents(ctx: Context) {.gcsafe.} =
     # Client over-shot past the head; converge back so polling stays bounded.
     nextCursor = latestSeq
 
+  logApiRequest(ctx, runId, 200)
   ctx.json(%*{
     "run_id": runId,
     "events": events,

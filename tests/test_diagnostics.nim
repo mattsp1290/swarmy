@@ -20,3 +20,8 @@ suite "diagnostics":
     check "json-token" notin redacted
     check "spaced-token" notin redacted
     check redacted.count("[REDACTED]") == 9
+
+  test "redacts a bare bearer token without an authorization prefix":
+    let redacted = redactDiagnostic("provider auth failed: Bearer sk-live-abc123")
+    check "sk-live-abc123" notin redacted
+    check "[REDACTED]" in redacted

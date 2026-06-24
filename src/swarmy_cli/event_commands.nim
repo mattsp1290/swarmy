@@ -3,6 +3,7 @@ import std/[json, options, os, strutils, times]
 import tiny_sqlite
 
 import swarmy_core/events
+import swarmy_core/logging
 import swarmy_core/persistence
 import swarmy_core/run_metadata
 
@@ -347,7 +348,9 @@ proc runStage*(args: seq[string]): CliResult =
 
   try:
     var seq: int64
+    var runId = ""
     withStore common.repo, proc(store: Store, metadata: RunMetadata) =
+      runId = metadata.runId
       store.db.transaction:
         store.ensureRun(metadata)
         store.ensureBead(metadata, beadId, title, common.at)
@@ -362,6 +365,13 @@ proc runStage*(args: seq[string]): CliResult =
           stage = some(stage.stageName),
           payloadJson = payloadJson
         )
+    emitLog(lvlInfo, "stage transition", {
+      "run_id": runId,
+      "bead_id": beadId,
+      "stage": stage.stageName,
+      "event_id": common.eventId.get,
+      "seq": $seq
+    })
     ok("swarmy stage: " & beadId & " " & $stage & " seq " & $seq & "\n")
   except CatchableError as err:
     fail("stage", err.msg)

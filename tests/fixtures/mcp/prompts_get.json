@@ -1,0 +1,12 @@
+{
+  "description": "Instructions for agents recording bead-swarm progress",
+  "messages": [
+    {
+      "role": "user",
+      "content": {
+        "type": "text",
+        "text": "<guidance>"
+      }
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "protocolVersion": "2025-06-18",
+  "serverInfo": {
+    "name": "swarmy",
+    "version": "<version>"
+  },
+  "capabilities": {
+    "tools": {
+      "listChanged": false
+    },
+    "resources": {
+      "listChanged": false
+    },
+    "prompts": {
+      "listChanged": false
+    }
+  }
+}

@@ -34,13 +34,10 @@ export default defineConfig({
       }
     },
     {
+      // Real Chromium-based mobile emulation (mobile viewport, touch, mobile
+      // UA) so this is honest mobile framing, not just a narrow desktop window.
       name: 'mobile',
-      use: {
-        ...devices['Desktop Chrome'],
-        viewport: { width: 390, height: 844 },
-        deviceScaleFactor: 2,
-        isMobile: false
-      }
+      use: { ...devices['Pixel 5'] }
     }
   ],
   webServer: {

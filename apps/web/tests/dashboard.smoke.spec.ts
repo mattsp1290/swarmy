@@ -75,7 +75,9 @@ const json = (body: unknown) => ({
 
 /** Stub /api/runs (list) and /api/runs/<id> (detail) with the fixtures. */
 async function stubHappyApi(page: Page): Promise<void> {
-  // Order matters: register the more specific detail route first so it wins.
+  // The two globs are non-overlapping, so registration order is irrelevant:
+  // `**/api/runs` matches only the bare list path, while `**/api/runs/*`
+  // requires a trailing segment and matches only the detail path.
   await page.route('**/api/runs/*', (route) =>
     route.fulfill(json(RUN_DETAIL))
   );

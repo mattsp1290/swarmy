@@ -5,6 +5,22 @@ canonical issue tracker; Swarmy records run-local agent activity and stage
 overlays so concurrent bead-swarm work can be observed without changing
 canonical Beads status early. **Use `bd` for issue state — never `bn`.**
 
+## Project conventions (read first)
+
+Durable instructions for any agent working in this repo:
+
+- **Beads-only tracking.** This project tracks all issues with Beads (`bd`). Do
+  **not** use `bn`/beans here — `bd` is the only issue tracker for Swarmy.
+- **Follow the Swarmy event conventions.** Record run state through the CLI or
+  MCP exactly as described in [When to record what](#when-to-record-what): one
+  `swarmy init` per run, register agents before they write, and emit only the
+  writable stage names (`coding`, `validation`, `review`, `merge`, `blocked`,
+  `complete`) with a unique `--event-id` per event.
+- **Route Nim ecosystem gaps to the owning project.** File missing-library
+  requests in the owning project's request folder per
+  [Filing Nim ecosystem gaps](#filing-nim-ecosystem-gaps); they are
+  non-blocking follow-ups, not product blockers.
+
 ## When to record what
 
 Record state through the **CLI** (`swarmy <command>`) or the equivalent **MCP

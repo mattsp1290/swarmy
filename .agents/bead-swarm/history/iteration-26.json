@@ -1,0 +1,34 @@
+{
+  "schema_version": "bead-swarm-history-v1",
+  "iteration": 26,
+  "branch": "bead-swarm/iteration-26-e2e-first-milestone-smoke",
+  "slug": "e2e-first-milestone-smoke",
+  "main_branch": "main",
+  "main_branch_source": "default",
+  "execution_mode": "orchestrator-subagent",
+  "degraded_reason": null,
+  "selected_beads": ["swarmy-e24"],
+  "beads_done": ["swarmy-e24"],
+  "beads_blocked": [],
+  "beads_partial": [],
+  "merge_target": "main",
+  "validation": [
+    "tests/smoke_e2e.sh: PASS (init Beads repo, swarmy init, coding+review events, serve, verify /api/runs + /api/runs/:id + /events)",
+    "tests/smoke.sh (full chain incl. e2e): exit 0",
+    "foreign-server false-pass guard verified: exits 1 on port-in-use",
+    "nimble test: PASS (unchanged)"
+  ],
+  "review_mode": "reviewer-subagents",
+  "review_assurance": "normal",
+  "findings_fixed_re_reviewed": true,
+  "review_artifacts_local_only": true,
+  "review_blocker_summary": [
+    "scout HIGH: false-pass when port held by foreign server - FIXED (assert_our_server_alive guard)",
+    "redowl nits: python3 preflight, unused arg - FIXED"
+  ],
+  "reviews": [
+    {"reviewer": "redowl", "verdict": "APPROVE", "artifact": "reviews/bead-swarm-iteration-26-e2e-first-milestone-smoke/redowl/04-action-items.md"},
+    {"reviewer": "scout", "verdict": "REQUEST_CHANGES->APPROVE (re-review)", "artifact": "reviews/bead-swarm-iteration-26-e2e-first-milestone-smoke/scout/04-action-items.md"}
+  ],
+  "status": "complete"
+}

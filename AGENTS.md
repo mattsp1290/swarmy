@@ -61,6 +61,31 @@ the timeline simply resumes from the next event. See
 [`docs/RUNBOOK.md`](docs/RUNBOOK.md) for recovery from stale `.swarmy` metadata
 or missing events.
 
+## Filing Nim ecosystem gaps
+
+When Swarmy needs something a Nim dependency does not yet provide (a Jazzy route
+helper, an MCP protocol behavior, a missing library feature), file the gap as a
+markdown request in the **owning project's** request folder under the
+established convention:
+
+```
+~/.agents/projects/<owning-project>/requests/<short-name>.md
+```
+
+Routing rules:
+
+- File the request against the project that actually owns the code — e.g. Jazzy
+  framework gaps go to the `jazzy` bucket, MCP/NimCP gaps to the `nimcp` bucket.
+- **Only create a new project bucket when the owning repo/project is genuinely
+  unknown.** Prefer an existing bucket over inventing one.
+- Project/bucket names used as examples in docs are **illustrative, not a
+  guarantee that such a project exists** — verify the owning project before
+  filing, and do not assume an example name maps to a real repo.
+
+A filed request is non-blocking: keep shipping Swarmy on a local fallback (see
+[`docs/ECOSYSTEM.md`](docs/ECOSYSTEM.md)) and revisit the request only when the
+upstream change actually lands.
+
 ## Research context for implementers
 
 Background research and the task-graph plan that shaped Swarmy live under

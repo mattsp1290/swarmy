@@ -1,0 +1,14 @@
+{
+  "name": "swarmy-monorepo",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/web"
+  ],
+  "scripts": {
+    "build": "nimble build && npm run build --workspace apps/web",
+    "build:nim": "nimble build",
+    "build:web": "npm run build --workspace apps/web"
+  }
+}
+

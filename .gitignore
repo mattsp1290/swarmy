@@ -4,5 +4,14 @@ htmldocs/
 
 # Beads / Dolt files (added by bd init)
 .dolt/
+.beads/embeddeddolt/
 *.db
 .beads-credential-key
+
+# Build outputs and local installs
+/swarmy
+/.nimble/
+/node_modules/
+/apps/web/dist/
+/apps/web/node_modules/
+*.log

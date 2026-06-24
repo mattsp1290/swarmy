@@ -18,7 +18,7 @@ actually lands.
   WebSocket/SSE helper (its own `SUGGESTED_ISSUES.md` lists a real-time log
   viewer as future work).
 - **Fallback (shipped):** the UI uses **REST polling against a run-scoped event
-  cursor** — `GET /api/runs/:id/events?after=<seq>` — with a clean service seam
+  cursor** — `GET /api/runs/:run_id/events?after=<seq>` — with a clean service seam
   for future push updates. Per-run event sequence numbers are contiguous and
   monotonic, so polling reconciles deterministically without missing or
   duplicating events.

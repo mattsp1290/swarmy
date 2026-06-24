@@ -15,6 +15,10 @@ The adapter intentionally mirrors MCP method names for:
 - `initialize`
 - `tools/list`
 - `tools/call`
+- `resources/list`
+- `resources/read`
+- `prompts/list`
+- `prompts/get`
 
 Tools:
 
@@ -22,6 +26,14 @@ Tools:
 - `swarmy_agent`
 - `swarmy_stage`
 - `swarmy_snapshot`
+
+Resource:
+
+- `swarmy://guidance/bead-swarm`
+
+Prompt:
+
+- `bead-swarm`
 
 The write tools route through the same command handlers as the CLI so event
 validation, idempotency, run scoping, and persistence behavior stay equivalent.

@@ -1,6 +1,6 @@
 import std/strutils
 
-import swarmy_cli/[event_commands, init, mcp, serve]
+import swarmy_cli/[event_commands, guidance, init, mcp, serve]
 import swarmy_cli/dispatch_types
 import swarmy_core/app
 
@@ -18,6 +18,7 @@ Usage:
   swarmy stage --event-id ID --bead ID --stage NAME [options]
   swarmy agent --event-id ID --agent ID --name NAME [options]
   swarmy snapshot --source SOURCE --snapshot-json JSON [options]
+  swarmy bead-swarm
   swarmy serve
   swarmy mcp
 """.strip(leading = false) & "\n"
@@ -39,6 +40,8 @@ proc run*(args: seq[string]): CliResult =
     event_commands.runAgent(args[1 .. ^1])
   of "snapshot":
     event_commands.runSnapshot(args[1 .. ^1])
+  of "bead-swarm":
+    guidance.run(args[1 .. ^1])
   of "serve":
     serve.run(args[1 .. ^1])
   of "mcp":

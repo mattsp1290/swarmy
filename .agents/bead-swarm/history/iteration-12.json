@@ -1,0 +1,46 @@
+{
+  "schema_version": "bead-swarm-history-v1",
+  "iteration": 12,
+  "branch": "bead-swarm/iteration-12-bead-swarm-guidance",
+  "slug": "bead-swarm-guidance",
+  "main_branch": "main",
+  "main_branch_source": "default",
+  "selected_beads": ["swarmy-otx"],
+  "beads_done": ["swarmy-otx"],
+  "beads_blocked": [],
+  "beads_partial": [],
+  "merge_target": "main",
+  "validation": [
+    "nim c -r --path:src --hints:off --verbosity:0 tests/test_mcp_stdio.nim: pass",
+    "nim c -r --path:src --hints:off --verbosity:0 tests/test_cli_dispatch.nim: pass",
+    "nimble test: pass",
+    "nimble build: pass",
+    "git diff --check main...HEAD: pass",
+    "nim check --path:src src/swarmy_cli/mcp_stdio.nim: pass",
+    "nim check --path:src src/swarmy_cli/guidance.nim: pass"
+  ],
+  "review_artifacts_local_only": true,
+  "review_blocker_summary": [
+    "guidance-contract-review requested exact writable stage names and `complete` instead of `completion`; resolved by updating shared guidance and semantic CLI assertions",
+    "mcp-surface-review requested a scheme-bearing MCP resource URI and stricter resource/prompt identifier validation; resolved with exported MCP constants, JSON-RPC parameter checks, docs, and negative-path tests"
+  ],
+  "reviews": [
+    {
+      "reviewer": "guidance-contract-review",
+      "verdict": "APPROVE",
+      "artifact": "reviews/bead-swarm-iteration-12-bead-swarm-guidance-2026-06-24/guidance-contract-review/01-critical-and-important.md",
+      "latest_head_addendum": "reviews/bead-swarm-iteration-12-bead-swarm-guidance-2026-06-24/guidance-contract-review/05-addendum.md",
+      "critical_count": 0,
+      "important_count": 1
+    },
+    {
+      "reviewer": "mcp-surface-review",
+      "verdict": "APPROVE",
+      "artifact": "reviews/bead-swarm-iteration-12-bead-swarm-guidance-2026-06-24/mcp-surface-review/01-critical-and-important.md",
+      "latest_head_addendum": "reviews/bead-swarm-iteration-12-bead-swarm-guidance-2026-06-24/mcp-surface-review/05-addendum.md",
+      "critical_count": 0,
+      "important_count": 1
+    }
+  ],
+  "status": "complete"
+}

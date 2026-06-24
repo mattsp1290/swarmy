@@ -4,6 +4,7 @@ import tiny_sqlite
 
 import swarmy_cli/dispatch
 import swarmy_core/app
+import swarmy_core/guidance
 import swarmy_core/persistence
 import swarmy_core/run_metadata
 
@@ -61,6 +62,15 @@ suite "cli dispatch":
     check result.exitCode == 0
     check result.output == "swarmy mcp: MCP server seam ready\n"
     check result.error == ""
+
+  test "bead-swarm command prints shared agent guidance":
+    let result = run(@["bead-swarm"])
+
+    check result.exitCode == 0
+    check result.output == BeadSwarmGuidance
+    check "swarmy init --repo PATH" in result.output
+    check "--stage complete" in result.output
+    check "--stage completion" notin result.output
 
   test "stage command records a durable bead stage event":
     withTempRepo proc(repo, dbPath: string) =

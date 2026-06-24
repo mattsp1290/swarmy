@@ -4,10 +4,12 @@ import tiny_sqlite
 
 import swarmy_cli/event_commands
 import swarmy_cli/init as init_command
-import swarmy_core/[app, events, persistence, run_metadata]
+import swarmy_core/[app, events, guidance, persistence, run_metadata]
 
 const
   McpProtocolVersion* = "2025-06-18"
+  BeadSwarmResourceUri* = "swarmy://guidance/bead-swarm"
+  BeadSwarmPromptName* = "bead-swarm"
 
 proc textResult(text: string, isError = false): JsonNode =
   result = %*{"content": [%*{"type": "text", "text": text}]}
@@ -31,6 +33,12 @@ proc rpcError(id: JsonNode, code: int, message: string): string =
   response["id"] = id
   response["error"] = error
   $response
+
+proc paramsNode(request: JsonNode): JsonNode =
+  if request.kind == JObject and request.hasKey("params"):
+    request["params"]
+  else:
+    newJNull()
 
 proc stringArg(args: JsonNode, name: string, default = ""): string =
   if args.kind == JObject and args.hasKey(name) and args[name].kind != JNull:
@@ -69,6 +77,20 @@ proc requireStringField(
       toolError(toolName, toolName & ": missing required argument `" & name & "`")
     )
   (true, args[name].getStr, newJNull())
+
+proc requireRpcStringParam(
+  methodName: string,
+  params: JsonNode,
+  name: string
+): tuple[ok: bool, value: string, message: string] =
+  if params.kind != JObject or not params.hasKey(name) or
+      params[name].kind != JString or params[name].getStr.len == 0:
+    return (
+      false,
+      "",
+      methodName & ": missing required string parameter `" & name & "`"
+    )
+  (true, params[name].getStr, "")
 
 proc addOpt(result: var seq[string], flag: string, value: Option[string]) =
   if value.isSome:
@@ -256,6 +278,58 @@ proc toolsList(): JsonNode =
     ]
   }
 
+proc resourcesList(): JsonNode =
+  %*{
+    "resources": [
+      {
+        "uri": BeadSwarmResourceUri,
+        "name": BeadSwarmPromptName,
+        "description": "Swarmy bead-swarm workflow guidance",
+        "mimeType": "text/markdown"
+      }
+    ]
+  }
+
+proc resourceRead(uri: string): Option[JsonNode] =
+  if uri != BeadSwarmResourceUri:
+    return none(JsonNode)
+  some(%*{
+    "contents": [
+      {
+        "uri": BeadSwarmResourceUri,
+        "mimeType": "text/markdown",
+        "text": BeadSwarmGuidance
+      }
+    ]
+  })
+
+proc promptsList(): JsonNode =
+  %*{
+    "prompts": [
+      {
+        "name": BeadSwarmPromptName,
+        "description": "Instructions for agents recording bead-swarm progress",
+        "arguments": []
+      }
+    ]
+  }
+
+proc promptGet(name: string): Option[JsonNode] =
+  if name != BeadSwarmPromptName:
+    return none(JsonNode)
+  some(%*{
+    "description": "Instructions for agents recording bead-swarm progress",
+    "messages": [
+      {
+        "role": "user",
+        "content": {
+          "type": "text",
+          "text": BeadSwarmGuidance
+        }
+      }
+    ]
+  })
+
 proc knownTool(name: string): bool =
   case name
   of "swarmy_init", "swarmy_agent", "swarmy_stage", "swarmy_snapshot":
@@ -289,12 +363,16 @@ proc handleMcpLine*(line: string): Option[string] =
       some(rpcResult(id, %*{
         "protocolVersion": McpProtocolVersion,
         "serverInfo": {"name": Name, "version": Version},
-        "capabilities": {"tools": {"listChanged": false}}
+        "capabilities": {
+          "tools": {"listChanged": false},
+          "resources": {"listChanged": false},
+          "prompts": {"listChanged": false}
+        }
       }))
     of "tools/list":
       some(rpcResult(id, toolsList()))
     of "tools/call":
-      let params = request{"params"}
+      let params = request.paramsNode()
       if params.kind != JObject:
         return some(rpcError(id, -32602, "tools/call requires params"))
       let name = params.stringArg("name")
@@ -302,6 +380,32 @@ proc handleMcpLine*(line: string): Option[string] =
       if not knownTool(name):
         return some(rpcError(id, -32602, "unknown tool: " & name))
       some(rpcResult(id, callTool(name, args)))
+    of "resources/list":
+      some(rpcResult(id, resourcesList()))
+    of "resources/read":
+      let params = request.paramsNode()
+      if params.kind != JObject:
+        return some(rpcError(id, -32602, "resources/read requires params"))
+      let uri = requireRpcStringParam("resources/read", params, "uri")
+      if not uri.ok:
+        return some(rpcError(id, -32602, uri.message))
+      let found = resourceRead(uri.value)
+      if found.isNone:
+        return some(rpcError(id, -32602, "unknown resource: " & uri.value))
+      some(rpcResult(id, found.get))
+    of "prompts/list":
+      some(rpcResult(id, promptsList()))
+    of "prompts/get":
+      let params = request.paramsNode()
+      if params.kind != JObject:
+        return some(rpcError(id, -32602, "prompts/get requires params"))
+      let name = requireRpcStringParam("prompts/get", params, "name")
+      if not name.ok:
+        return some(rpcError(id, -32602, name.message))
+      let found = promptGet(name.value)
+      if found.isNone:
+        return some(rpcError(id, -32602, "unknown prompt: " & name.value))
+      some(rpcResult(id, found.get))
     else:
       if request.hasKey("id"):
         some(rpcError(id, -32601, "method not found: " & methodName))

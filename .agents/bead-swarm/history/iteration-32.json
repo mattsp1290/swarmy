@@ -1,0 +1,32 @@
+{
+  "schema_version": "bead-swarm-history-v1",
+  "iteration": 32,
+  "branch": "bead-swarm/iteration-32-contributor-and-operations-docs",
+  "slug": "contributor-and-operations-docs",
+  "main_branch": "main",
+  "main_branch_source": "default",
+  "execution_mode": "parent-degraded",
+  "degraded_reason": "Docs batch sharing AGENTS.md/README; written directly by the orchestrator (no parallel workers) because the four beads' write scopes overlap.",
+  "selected_beads": ["swarmy-36i", "swarmy-3mk", "swarmy-6jm", "swarmy-43p"],
+  "beads_done": ["swarmy-36i", "swarmy-3mk", "swarmy-6jm", "swarmy-43p"],
+  "beads_blocked": [],
+  "beads_partial": [],
+  "merge_target": "main",
+  "validation": [
+    "Doc accuracy verified: all CLI commands/flags, stage names, MCP identifiers, npm/nimble scripts, and internal links checked against source.",
+    "Empirical: swarmy init/stage/doctor flows confirm .swarmy contents and stage validation.",
+    "No code changed; backend/frontend suites unaffected."
+  ],
+  "review_mode": "reviewer-subagents",
+  "review_assurance": "normal",
+  "findings_fixed_re_reviewed": true,
+  "review_artifacts_local_only": true,
+  "review_blocker_summary": [
+    "Both reviewers REQUEST_CHANGES on one shared inaccuracy (init does not create config.json/swarmy.db) -> FIXED + empirically reconfirmed; redowl re-review APPROVE."
+  ],
+  "reviews": [
+    {"reviewer": "redowl", "verdict": "REQUEST_CHANGES->APPROVE (re-review)", "artifact": "reviews/bead-swarm-iteration-32-contributor-and-operations-docs/redowl/04-action-items.md"},
+    {"reviewer": "scout", "verdict": "REQUEST_CHANGES (round1, finding fixed)", "artifact": "reviews/bead-swarm-iteration-32-contributor-and-operations-docs/scout/04-action-items.md"}
+  ],
+  "status": "complete"
+}

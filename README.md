@@ -39,7 +39,7 @@ npm run test:smoke                       # end-to-end shell smoke (tests/smoke.s
 Start the local server (after building the web bundle):
 
 ```sh
-swarmy init --repo .                     # create ./.swarmy run identity + store
+swarmy init --repo .                     # create ./.swarmy/run.json (store is created on first write)
 swarmy serve --repo . --static-dir apps/web/dist
 ```
 

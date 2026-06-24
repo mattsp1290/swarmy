@@ -35,11 +35,13 @@ From the repository the swarm operates on:
 swarmy init --repo .
 ```
 
-This creates `./.swarmy/` containing `run.json` (run identity + metadata),
-`config.json`, and `swarmy.db` (the SQLite event store). `init` is idempotent —
-re-running it reuses the existing run rather than creating a new one. Use
-`--db PATH` to place the store outside the repo (the path is canonicalized and
-symlinks are rejected).
+This creates `./.swarmy/run.json` (run identity + metadata). The SQLite event
+store (`swarmy.db`, plus `swarmy.db-wal`/`swarmy.db-shm` sidecars) is created
+lazily on the first recorded event or when the server starts — not by `init`
+itself. (`swarmy doctor` reports a `config_path`, but a `config.json` file is
+not written today.) `init` is idempotent — re-running it reuses the existing run
+rather than creating a new one. Use `--db PATH` to place the store outside the
+repo (the path is canonicalized and symlinks are rejected).
 
 ## 3. Start the UI
 

@@ -39,8 +39,26 @@ suite "cli dispatch":
     let result = run(@["serve"])
 
     check result.exitCode == 0
-    check result.output == "swarmy serve: server seam ready\n"
+    check result.output == "swarmy serve: http://127.0.0.1:8080 static apps/web/dist\n"
     check result.error == ""
+
+  test "serve command accepts safe local bind options":
+    let result = run(@[
+      "serve",
+      "--host", "127.0.0.2",
+      "--port", "9090",
+      "--static-dir", "custom-dist"
+    ])
+
+    check result.exitCode == 0
+    check result.output == "swarmy serve: http://127.0.0.2:9090 static custom-dist\n"
+
+  test "serve command validates port":
+    let result = run(@["serve", "--port", "70000"])
+
+    check result.exitCode == 2
+    check result.output == ""
+    check "--port must be between 1 and 65535" in result.error
 
   test "init validates arguments before reaching metadata writes":
     let result = run(@["init", "--repo"])

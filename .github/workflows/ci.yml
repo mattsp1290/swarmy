@@ -1,0 +1,98 @@
+# Continuous Integration for the swarmy monorepo.
+#
+# Runs four jobs on every push / pull request to `main` (and on manual
+# dispatch). All jobs run on ubuntu-latest and avoid external services:
+#   - backend:  Nim unit tests + binary build (embedded sqlite, stubbed APIs).
+#   - frontend: Svelte/Vite build, node:test suite, and Playwright UI smoke.
+#   - smoke:    full root build + tests/smoke.sh (python3/curl preinstalled).
+#   - package:  produces a release tarball via scripts/package.sh and uploads it.
+#
+# Nim is installed with the official choosenim script (no third-party action)
+# so the toolchain version tracks upstream stable (>= 2.2.4).
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Nim
+        run: |
+          curl https://nim-lang.org/choosenim/init.sh -sSf | sh -s -- -y
+          echo "$HOME/.nimble/bin" >> "$GITHUB_PATH"
+      - name: Install Nim dependencies
+        run: nimble install -y --depsOnly
+      - name: Run backend tests
+        run: nimble test
+      - name: Build backend binary
+        run: nimble build
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm ci
+      - name: Build web app
+        run: npm run build --workspace apps/web
+      - name: Run web unit tests
+        run: npm run test --workspace apps/web
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+      - name: Run UI smoke tests
+        run: npm run test:ui --workspace apps/web
+
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Nim
+        run: |
+          curl https://nim-lang.org/choosenim/init.sh -sSf | sh -s -- -y
+          echo "$HOME/.nimble/bin" >> "$GITHUB_PATH"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Nim dependencies
+        run: nimble install -y --depsOnly
+      - name: Install dependencies
+        run: npm ci
+      - name: Build (nim + web)
+        run: npm run build
+      - name: Run smoke suite
+        run: tests/smoke.sh
+
+  package:
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Nim
+        run: |
+          curl https://nim-lang.org/choosenim/init.sh -sSf | sh -s -- -y
+          echo "$HOME/.nimble/bin" >> "$GITHUB_PATH"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Nim dependencies
+        run: nimble install -y --depsOnly
+      - name: Install dependencies
+        run: npm ci
+      - name: Build release artifact
+        run: scripts/package.sh
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: swarmy-release
+          path: dist/*.tar.gz

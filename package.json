@@ -9,6 +9,7 @@
     "build": "nimble build && npm run build --workspace apps/web",
     "build:nim": "nimble build",
     "build:web": "npm run build --workspace apps/web",
-    "test:nim": "nimble test"
+    "test:nim": "nimble test",
+    "test:smoke": "tests/smoke.sh"
   }
 }

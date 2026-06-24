@@ -50,3 +50,14 @@ read-only so the diagnostic does not mutate it. The entire report is run through
 the redactor described above. It exits `0` even for an uninitialized repo
 (reporting that state), `1` on filesystem/database errors, and `2` on unexpected
 arguments.
+
+## Smoke tests
+
+`npm run test:smoke` runs `tests/smoke.sh`, which builds the backend and web app
+and exercises the running server. The end-to-end milestone check
+(`tests/smoke_e2e.sh`) proves the user-facing path in one command: it initializes
+a temp Beads repo, runs `swarmy init`, records synthetic `coding` and `review`
+events through the real CLI, starts the API against that repo, and verifies the
+UI-facing state endpoints (`/api/runs`, `/api/runs/:id`, and the
+`/api/runs/:id/events` polling cursor) reflect the recorded run, bead stage, and
+event order. Override ports with `SWARMY_SMOKE_PORT` / `SWARMY_SMOKE_E2E_PORT`.

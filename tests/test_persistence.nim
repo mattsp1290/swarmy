@@ -1,4 +1,4 @@
-import std/[os, strutils, unittest]
+import std/[options, os, strutils, unittest]
 
 import tiny_sqlite
 
@@ -29,6 +29,15 @@ proc tableNames(store: Store): seq[string] =
     "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name"
   ):
     result.add row["name"].fromDbValue(string)
+
+proc insertRun(store: Store, runId = "run-1") =
+  store.db.exec(
+    """
+    INSERT INTO runs(run_id, repo_path, created_at, updated_at)
+    VALUES(?, '/repo', '2026-06-24T00:00:00Z', '2026-06-24T00:00:00Z')
+    """,
+    runId
+  )
 
 suite "persistence":
   test "initializes the durable store schema":
@@ -63,12 +72,7 @@ suite "persistence":
   test "events enforce unique event ids and run-scoped sequence numbers":
     withTempStore proc(store: Store, path: string) =
       discard path
-      store.db.exec(
-        """
-        INSERT INTO runs(run_id, repo_path, created_at, updated_at)
-        VALUES('run-1', '/repo', '2026-06-24T00:00:00Z', '2026-06-24T00:00:00Z')
-        """
-      )
+      store.insertRun()
       store.db.exec(
         """
         INSERT INTO events(event_id, run_id, seq, occurred_at, source, event_type)
@@ -92,29 +96,80 @@ suite "persistence":
           """
         )
 
-  test "reserves event sequences through a durable run cursor":
+  test "appends events through a durable run cursor":
     withTempStore proc(store: Store, path: string) =
       discard path
-      store.db.exec(
-        """
-        INSERT INTO runs(run_id, repo_path, created_at, updated_at)
-        VALUES('run-1', '/repo', '2026-06-24T00:00:00Z', '2026-06-24T00:00:00Z')
-        """
-      )
+      store.insertRun()
 
-      check store.reserveEventSeq("run-1") == 1
-      check store.reserveEventSeq("run-1") == 2
-      check store.scalarInt("SELECT next_seq FROM event_cursors WHERE run_id = 'run-1'") == 3
+      check store.appendEvent(
+        "event-1", "run-1", "2026-06-24T00:00:01Z", "test", "stage.started"
+      ) == 1
+      check store.appendEvent(
+        "event-2", "run-1", "2026-06-24T00:00:02Z", "test", "stage.done"
+      ) == 2
+      check store.scalarInt("SELECT COUNT(*) FROM events") == 2
+      check store.scalarInt(
+        "SELECT next_seq FROM event_cursors WHERE run_id = 'run-1'"
+      ) == 3
+
+  test "duplicate event appends are idempotent and do not advance the cursor":
+    withTempStore proc(store: Store, path: string) =
+      discard path
+      store.insertRun()
+
+      check store.appendEvent(
+        "event-1", "run-1", "2026-06-24T00:00:01Z", "test", "stage.started"
+      ) == 1
+      check store.appendEvent(
+        "event-1", "run-1", "2026-06-24T00:00:01Z", "test", "stage.started"
+      ) == 1
+      check store.scalarInt("SELECT COUNT(*) FROM events") == 1
+      check store.scalarInt(
+        "SELECT next_seq FROM event_cursors WHERE run_id = 'run-1'"
+      ) == 2
+
+  test "independent store connections append distinct run-scoped sequences":
+    withTempStore proc(store: Store, path: string) =
+      store.insertRun()
+      var second = initializeStore(path)
+      try:
+        check store.appendEvent(
+          "event-1", "run-1", "2026-06-24T00:00:01Z", "test", "stage.started"
+        ) == 1
+        check second.appendEvent(
+          "event-2", "run-1", "2026-06-24T00:00:02Z", "test", "stage.done"
+        ) == 2
+        check store.scalarInt("SELECT COUNT(*) FROM events") == 2
+        check store.scalarInt("SELECT COUNT(DISTINCT seq) FROM events") == 2
+        check store.scalarInt(
+          "SELECT next_seq FROM event_cursors WHERE run_id = 'run-1'"
+        ) == 3
+      finally:
+        second.close()
+
+  test "timestamp columns reject non-rfc3339 strings":
+    withTempStore proc(store: Store, path: string) =
+      discard path
+      expect SqliteError:
+        store.db.exec(
+          """
+          INSERT INTO runs(run_id, repo_path, created_at, updated_at)
+          VALUES('run-1', '/repo', 'not-a-time', '2026-06-24T00:00:00Z')
+          """
+        )
+
+      store.insertRun()
+      expect SqliteError:
+        discard store.appendEvent(
+          "event-1", "run-1", "not-a-time", "test", "stage.started"
+        )
+      check store.scalarInt("SELECT COUNT(*) FROM events") == 0
+      check store.scalarInt("SELECT COUNT(*) FROM event_cursors") == 0
 
   test "stage names are constrained to the known reducer vocabulary":
     withTempStore proc(store: Store, path: string) =
       discard path
-      store.db.exec(
-        """
-        INSERT INTO runs(run_id, repo_path, created_at, updated_at)
-        VALUES('run-1', '/repo', '2026-06-24T00:00:00Z', '2026-06-24T00:00:00Z')
-        """
-      )
+      store.insertRun()
       store.db.exec(
         """
         INSERT INTO beads(run_id, bead_id, title, updated_at)
@@ -135,3 +190,48 @@ suite "persistence":
           VALUES('run-1', 'swarmy-0g2', 'surprise', '2026-06-24T00:00:02Z')
           """
         )
+
+  test "event and stage provenance foreign keys are enforced":
+    withTempStore proc(store: Store, path: string) =
+      discard path
+      store.insertRun()
+
+      expect SqliteError:
+        discard store.appendEvent(
+          "event-1",
+          "run-1",
+          "2026-06-24T00:00:01Z",
+          "test",
+          "bead.changed",
+          beadId = some("missing-bead")
+        )
+
+      store.db.exec(
+        """
+        INSERT INTO beads(run_id, bead_id, title, updated_at)
+        VALUES('run-1', 'swarmy-0g2', 'Create SQLite schema', '2026-06-24T00:00:00Z')
+        """
+      )
+      discard store.appendEvent(
+        "event-1",
+        "run-1",
+        "2026-06-24T00:00:01Z",
+        "test",
+        "bead.changed",
+        beadId = some("swarmy-0g2")
+      )
+
+      expect SqliteError:
+        store.db.exec(
+          """
+          INSERT INTO stages(run_id, bead_id, stage, started_at, source_event_id)
+          VALUES('run-1', 'swarmy-0g2', 'review', '2026-06-24T00:00:02Z', 'missing-event')
+          """
+        )
+
+      store.db.exec(
+        """
+        INSERT INTO stages(run_id, bead_id, stage, started_at, source_event_id)
+        VALUES('run-1', 'swarmy-0g2', 'review', '2026-06-24T00:00:02Z', 'event-1')
+        """
+      )

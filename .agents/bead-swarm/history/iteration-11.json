@@ -1,0 +1,50 @@
+{
+  "schema_version": "bead-swarm-history-v1",
+  "iteration": 11,
+  "branch": "bead-swarm/iteration-11-mcp-write-tools",
+  "slug": "mcp-write-tools",
+  "main_branch": "main",
+  "main_branch_source": "default",
+  "selected_beads": ["swarmy-l2z"],
+  "beads_done": ["swarmy-l2z"],
+  "beads_blocked": [],
+  "beads_partial": [],
+  "merge_target": "main",
+  "validation": [
+    "nim c -r --path:src --hints:off --verbosity:0 tests/test_mcp_stdio.nim: pass",
+    "nimble test: pass",
+    "nimble build: pass",
+    "npm ci: pass",
+    "npm run build --workspace apps/web: pass",
+    "npm run build: pass",
+    "nimble buildAll: pass",
+    "git diff --check main...HEAD: pass",
+    "nim check --path:src src/swarmy_cli/mcp_stdio.nim: pass",
+    "nim check --path:src tests/test_mcp_stdio.nim: pass",
+    "nim check --path:src src/swarmy.nim: pass"
+  ],
+  "review_artifacts_local_only": true,
+  "review_blocker_summary": [
+    "mcp-protocol-review requested no-id request suppression, id:null rejection, JSON-RPC errors for unknown tools, and isError true for failed tool results; resolved with protocol boundary checks and regression tests",
+    "tool-boundary-review requested server-side required argument enforcement and read-only snapshot behavior; resolved by rejecting missing/non-object arguments, removing implicit cwd repo defaults for required fields, and preventing snapshot reads from initializing stores"
+  ],
+  "reviews": [
+    {
+      "reviewer": "mcp-protocol-review",
+      "verdict": "APPROVE",
+      "artifact": "reviews/bead-swarm-iteration-11-mcp-write-tools-2026-06-24/mcp-protocol-review/01-critical-and-important.md",
+      "latest_head_addendum": "reviews/bead-swarm-iteration-11-mcp-write-tools-2026-06-24/mcp-protocol-review/addendum.md",
+      "critical_count": 0,
+      "important_count": 3
+    },
+    {
+      "reviewer": "tool-boundary-review",
+      "verdict": "APPROVE",
+      "artifact": "reviews/bead-swarm-iteration-11-mcp-write-tools-2026-06-24/tool-boundary-review/01-critical-and-important.md",
+      "latest_head_addendum": "reviews/bead-swarm-iteration-11-mcp-write-tools-2026-06-24/tool-boundary-review/addendum.md",
+      "critical_count": 0,
+      "important_count": 2
+    }
+  ],
+  "status": "complete"
+}

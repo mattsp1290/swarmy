@@ -1,0 +1,48 @@
+{
+  "schema_version": "bead-swarm-history-v1",
+  "iteration": 4,
+  "branch": "bead-swarm/iteration-4-create-sqlite-schema-event-store",
+  "slug": "create-sqlite-schema-event-store",
+  "main_branch": "main",
+  "main_branch_source": "default",
+  "selected_beads": ["swarmy-0g2"],
+  "beads_done": ["swarmy-0g2"],
+  "beads_blocked": [],
+  "beads_partial": [],
+  "merge_target": "main",
+  "validation": [
+    "nimble test: pass",
+    "nimble build: pass",
+    "npm ci: pass",
+    "npm run build --workspace apps/web: pass",
+    "npm run build: pass",
+    "nimble buildAll: pass",
+    "git diff --check main...HEAD: pass",
+    "nim check --path:src src/swarmy.nim: pass",
+    "nim check --path:src tests/test_persistence.nim: pass"
+  ],
+  "review_artifacts_local_only": true,
+  "review_blocker_summary": [
+    "sqlite-schema-correctness requested RFC3339 timestamp enforcement; resolved with timestamp CHECK constraints and regression tests",
+    "event-store-integrity requested transactional event append instead of standalone sequence reservation; resolved with appendEvent and idempotency/multi-connection tests"
+  ],
+  "reviews": [
+    {
+      "reviewer": "sqlite-schema-correctness",
+      "verdict": "APPROVE",
+      "artifact": "reviews/bead-swarm-iteration-4-create-sqlite-schema-event-store-2026-06-24/sqlite-schema-correctness/findings.md",
+      "latest_head_addendum": "reviews/bead-swarm-iteration-4-create-sqlite-schema-event-store-2026-06-24/sqlite-schema-correctness/addendum.md",
+      "critical_count": 0,
+      "important_count": 1
+    },
+    {
+      "reviewer": "event-store-integrity",
+      "verdict": "APPROVE",
+      "artifact": "reviews/bead-swarm-iteration-4-create-sqlite-schema-event-store-2026-06-24/event-store-integrity/findings.md",
+      "latest_head_addendum": "reviews/bead-swarm-iteration-4-create-sqlite-schema-event-store-2026-06-24/event-store-integrity/addendum.md",
+      "critical_count": 0,
+      "important_count": 4
+    }
+  ],
+  "status": "complete"
+}

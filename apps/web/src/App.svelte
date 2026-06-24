@@ -1,8 +1,10 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import {
+    ApiError,
     fetchRunDetail,
     fetchRuns,
+    hasStoredToken,
     type BeadSummary,
     type RunDetail,
     type RunSummary
@@ -26,6 +28,7 @@
   let loadingRuns = true;
   let loadingDetail = false;
   let error = '';
+  let authError = false;
   let detailRequest = 0;
 
   const repoName = (path: string) => {
@@ -94,6 +97,7 @@
     selectedRun = null;
     loadingDetail = true;
     error = '';
+    authError = false;
 
     try {
       const detail = await fetchRunDetail(runId);
@@ -103,6 +107,7 @@
     } catch (caught) {
       if (detailRequest === requestId && selectedRunId === runId) {
         error = caught instanceof Error ? caught.message : 'Run detail request failed';
+        authError = caught instanceof ApiError && caught.isAuth;
       }
     } finally {
       if (detailRequest === requestId) {
@@ -114,6 +119,7 @@
   const loadRuns = async () => {
     loadingRuns = true;
     error = '';
+    authError = false;
 
     try {
       runs = await fetchRuns();
@@ -129,6 +135,7 @@
       await selectRun(nextRun.run_id);
     } catch (caught) {
       error = caught instanceof Error ? caught.message : 'Run list request failed';
+      authError = caught instanceof ApiError && caught.isAuth;
     } finally {
       loadingRuns = false;
     }
@@ -182,7 +189,24 @@
   </aside>
 
   <section class="detail" aria-label="Selected run">
-    {#if error}
+    {#if authError}
+      <div class="detail-state auth-state" role="alert">
+        <strong>Authentication required</strong>
+        <span>
+          This Swarmy server requires a local token. Open the dashboard using the
+          URL printed by <code>swarmy serve</code>, or append
+          <code>#swarmy_token=YOUR_TOKEN</code> to the address bar and retry.
+        </span>
+        <span class="auth-detail">
+          {#if hasStoredToken()}
+            The stored token was rejected.
+          {:else}
+            No token found.
+          {/if}
+        </span>
+        <button type="button" on:click={loadRuns}>Retry</button>
+      </div>
+    {:else if error}
       <div class="detail-state error-state">
         <strong>Request failed</strong>
         <span>{error}</span>

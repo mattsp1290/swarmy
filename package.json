@@ -10,6 +10,7 @@
     "build:nim": "nimble build",
     "build:web": "npm run build --workspace apps/web",
     "test:nim": "nimble test",
+    "test:web": "npm run test --workspace apps/web",
     "test:smoke": "tests/smoke.sh"
   }
 }

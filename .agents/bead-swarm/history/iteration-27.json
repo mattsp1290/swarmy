@@ -1,0 +1,32 @@
+{
+  "schema_version": "bead-swarm-history-v1",
+  "iteration": 27,
+  "branch": "bead-swarm/iteration-27-frontend-local-token-auth",
+  "slug": "frontend-local-token-auth",
+  "main_branch": "main",
+  "main_branch_source": "default",
+  "execution_mode": "orchestrator-subagent",
+  "degraded_reason": null,
+  "selected_beads": ["swarmy-9xh"],
+  "beads_done": ["swarmy-9xh"],
+  "beads_blocked": [],
+  "beads_partial": [],
+  "merge_target": "main",
+  "validation": [
+    "npm run test --workspace apps/web: PASS (10/10, node:test on pure auth helpers)",
+    "npm run build --workspace apps/web: PASS (vite)"
+  ],
+  "review_mode": "reviewer-subagents",
+  "review_assurance": "normal",
+  "findings_fixed_re_reviewed": false,
+  "review_artifacts_local_only": true,
+  "review_blocker_summary": [
+    "Both reviewers APPROVE (no Critical/Important).",
+    "Applied their non-blocking suggestions: hasStoredToken made pure; fetchAuthConfig dead code removed."
+  ],
+  "reviews": [
+    {"reviewer": "redowl", "verdict": "APPROVE", "artifact": "reviews/bead-swarm-iteration-27-frontend-local-token-auth/redowl/04-action-items.md"},
+    {"reviewer": "scout", "verdict": "APPROVE", "artifact": "reviews/bead-swarm-iteration-27-frontend-local-token-auth/scout/04-action-items.md"}
+  ],
+  "status": "complete"
+}

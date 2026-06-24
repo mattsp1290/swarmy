@@ -366,6 +366,25 @@ h1 {
   color: #70312b;
 }
 
+.auth-state {
+  border-style: solid;
+  border-color: #c7a45a;
+  background: #fdf8ec;
+  color: #5c4710;
+}
+
+.auth-state code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+  background: #f2e6c4;
+  border-radius: 4px;
+  padding: 0.05rem 0.3rem;
+}
+
+.auth-state .auth-detail {
+  font-weight: 600;
+}
+
 .detail-state button {
   width: fit-content;
   border: 1px solid #b7c5ca;

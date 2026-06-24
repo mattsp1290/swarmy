@@ -15,3 +15,10 @@ htmldocs/
 /apps/web/dist/
 /apps/web/node_modules/
 *.log
+
+# Playwright UI smoke artifacts
+/apps/web/test-results/
+/apps/web/playwright-report/
+/apps/web/blob-report/
+test-results/
+playwright-report/

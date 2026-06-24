@@ -1,0 +1,6 @@
+# Playwright UI smoke test artifacts (downloaded browsers live in the OS cache,
+# not the repo, so they don't need ignoring here).
+playwright-report/
+test-results/
+blob-report/
+playwright/.cache/

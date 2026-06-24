@@ -1,0 +1,35 @@
+{
+  "schema_version": "bead-swarm-history-v1",
+  "iteration": 28,
+  "branch": "bead-swarm/iteration-28-frontend-build-ui-smoke",
+  "slug": "frontend-build-ui-smoke",
+  "main_branch": "main",
+  "main_branch_source": "default",
+  "execution_mode": "orchestrator-subagent",
+  "degraded_reason": null,
+  "selected_beads": ["swarmy-n1s"],
+  "beads_done": ["swarmy-n1s"],
+  "beads_blocked": [],
+  "beads_partial": [],
+  "merge_target": "main",
+  "validation": [
+    "npm run build --workspace apps/web: PASS",
+    "npm run test --workspace apps/web (node:test): PASS (10)",
+    "npm run test:ui --workspace apps/web (Playwright): PASS (4 = 2 specs x desktop+mobile)",
+    "mutation-verified by reviewers: bogus stage and 401->200 both fail the relevant assertion"
+  ],
+  "review_mode": "reviewer-subagents",
+  "review_assurance": "normal",
+  "findings_fixed_re_reviewed": false,
+  "review_artifacts_local_only": true,
+  "review_blocker_summary": [
+    "Both reviewers APPROVE (no Critical/Important).",
+    "Applied Low findings: mobile project -> Pixel 5 real emulation; route-order comment corrected."
+  ],
+  "reviews": [
+    {"reviewer": "redowl", "verdict": "APPROVE", "artifact": "reviews/bead-swarm-iteration-28-frontend-build-ui-smoke/redowl/04-action-items.md"},
+    {"reviewer": "scout", "verdict": "APPROVE", "artifact": "reviews/bead-swarm-iteration-28-frontend-build-ui-smoke/scout/04-action-items.md"}
+  ],
+  "status": "complete",
+  "notes": "Added @playwright/test devDependency (chromium browser cached in OS, not committed); test stack: Playwright real-browser smoke."
+}

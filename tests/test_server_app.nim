@@ -85,6 +85,24 @@ proc insertAgent(store: Store, runId, agentId, name: string) =
     name
   )
 
+proc insertAgent(
+  store: Store,
+  runId, agentId, name, kind, metadataJson: string
+) =
+  store.db.exec(
+    """
+    INSERT INTO agents(
+      agent_id, run_id, name, kind, created_at, updated_at, metadata_json
+    )
+    VALUES(?, ?, ?, ?, '2026-06-24T00:00:00Z', '2026-06-24T00:00:00Z', ?)
+    """,
+    agentId,
+    runId,
+    name,
+    kind,
+    metadataJson
+  )
+
 proc dispatchGet(path: string): Context =
   let req = JazzyRequest(
     httpMethod: HttpGet,
@@ -235,3 +253,134 @@ suite "server app":
 
       let missing = dispatchGet("/api/runs/missing-run")
       check missing.response.code == 404
+
+  test "returns focused bead agent and stage detail endpoints":
+    withTempRepoAndDist proc(repo, dist, dbPath, runId: string) =
+      var store = initializeStore(dbPath)
+      try:
+        store.insertRun(
+          runId,
+          repo,
+          "active",
+          "2026-06-24T00:00:00Z",
+          "2026-06-24T00:00:04Z"
+        )
+        store.insertRun(
+          "run-other",
+          repo / "other",
+          "active",
+          "2026-06-24T00:00:00Z",
+          "2026-06-24T00:00:05Z"
+        )
+        store.insertBead(runId, "swarmy-s36", "Expose detail endpoints", "open")
+        store.insertBead(runId, "bd-only", "Discovered from bd", "blocked")
+        store.insertBead("run-other", "other-bead", "Other run bead", "open")
+        store.insertAgent(
+          runId,
+          "agent-1",
+          "Detail Agent",
+          "subagent",
+          """{"role":"api"}"""
+        )
+        discard store.recordStageEvent(
+          "event-1",
+          runId,
+          "swarmy-s36",
+          "2026-06-24T00:00:02Z",
+          stageCoding,
+          agentId = some("agent-1")
+        )
+        discard store.recordStageEvent(
+          "event-2",
+          runId,
+          "swarmy-s36",
+          "2026-06-24T00:00:03Z",
+          stageBlocked,
+          agentId = some("agent-1"),
+          payloadJson = """{"reason":"waiting on review"}"""
+        )
+        discard store.appendEvent(
+          "event-3",
+          runId,
+          "2026-06-24T00:00:04Z",
+          "swarmy",
+          "bead.note",
+          beadId = some("swarmy-s36")
+        )
+        discard store.recordStageEvent(
+          "event-other",
+          "run-other",
+          "other-bead",
+          "2026-06-24T00:00:04Z",
+          stageComplete
+        )
+        store.db.exec(
+          """
+          INSERT INTO errors(run_id, occurred_at, severity, message, context_json)
+          VALUES(?, '2026-06-24T00:00:04Z', 'error', 'backend failed', '{"step":"api"}')
+          """,
+          runId
+        )
+      finally:
+        store.close()
+
+      server_app.registerRoutes(dist, repo)
+
+      let detail = dispatchGet("/api/runs/" & runId)
+      check detail.response.code == 200
+      let detailPayload = parseJson(detail.response.body)
+      check detailPayload["beads"].len == 2
+      check detailPayload["beads"][0]["current_stage"].kind == JNull
+      check detailPayload["beads"][1]["swarm_stage"].getStr == "blocked"
+      check detailPayload["beads"][1]["status"].getStr == "open"
+      check detailPayload["beads"][1]["last_event_at"].getStr ==
+        "2026-06-24T00:00:04Z"
+      check detailPayload["beads"][1]["current_stage"]["occurred_at"].getStr ==
+        "2026-06-24T00:00:03Z"
+      check detailPayload["beads"][1]["current_stage"]["agent"]["id"].getStr ==
+        "agent-1"
+      check detailPayload["beads"][1]["blocker"]["payload"]["reason"].getStr ==
+        "waiting on review"
+      check detailPayload["agents"][0]["metadata"]["role"].getStr == "api"
+      check detailPayload["errors"][0]["message"].getStr == "backend failed"
+
+      let beads = dispatchGet("/api/runs/" & runId & "/beads")
+      check beads.response.code == 200
+      let beadsPayload = parseJson(beads.response.body)
+      check beadsPayload["beads"].len == 2
+      check beadsPayload["beads"][0]["id"].getStr == "bd-only"
+      check beadsPayload["beads"][0]["current_stage"].kind == JNull
+
+      let bead = dispatchGet("/api/runs/" & runId & "/beads/swarmy-s36")
+      check bead.response.code == 200
+      let beadPayload = parseJson(bead.response.body)
+      check beadPayload["stage_events"].len == 2
+      check beadPayload["stage_events"][0]["stage"].getStr == "coding"
+      check beadPayload["stage_events"][1]["payload"]["reason"].getStr ==
+        "waiting on review"
+
+      let agent = dispatchGet("/api/runs/" & runId & "/agents/agent-1")
+      check agent.response.code == 200
+      let agentPayload = parseJson(agent.response.body)
+      check agentPayload["metadata"]["role"].getStr == "api"
+      check agentPayload["event_count"].getInt == 2
+      check agentPayload["current_beads"].len == 1
+      check agentPayload["current_beads"][0]["stage"].getStr == "blocked"
+
+      let stages = dispatchGet("/api/runs/" & runId & "/stages")
+      check stages.response.code == 200
+      let stagesPayload = parseJson(stages.response.body)
+      check stagesPayload["stages"].len == 2
+      check stagesPayload["stages"][1]["bead_id"].getStr == "swarmy-s36"
+      check stagesPayload["stages"][1]["agent"]["id"].getStr == "agent-1"
+
+      let missingAgent = dispatchGet("/api/runs/" & runId & "/agents/missing")
+      check missingAgent.response.code == 404
+
+      let missingRunBead = dispatchGet("/api/runs/missing-run/beads/swarmy-s36")
+      check missingRunBead.response.code == 404
+      check parseJson(missingRunBead.response.body)["run_id"].getStr == "missing-run"
+
+      let missingRunAgent = dispatchGet("/api/runs/missing-run/agents/agent-1")
+      check missingRunAgent.response.code == 404
+      check parseJson(missingRunAgent.response.body)["run_id"].getStr == "missing-run"

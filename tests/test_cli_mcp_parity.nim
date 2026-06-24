@@ -137,6 +137,40 @@ suite "cli/mcp parity":
       removeDir(repoCli)
       removeDir(repoMcp)
 
+  test "default source converges across transports when omitted":
+    # The highest-risk parity seam: neither call passes --source/source, so both
+    # must fall back to the CLI default. MCP has no source default of its own; it
+    # only forwards --source when present, relying on the shared CLI handler.
+    let repoCli = tempRepo("defsrc-cli")
+    let repoMcp = tempRepo("defsrc-mcp")
+    try:
+      let mdCli = initRepo(repoCli)
+      let mdMcp = initRepo(repoMcp)
+
+      let cli = runStage(@[
+        "--repo", repoCli,
+        "--event-id", "evt-def-1",
+        "--bead", "b1",
+        "--stage", "coding",
+        "--at", FixedAt
+      ])
+      check cli.exitCode == 0
+
+      let mcp = response(callTool(1, "swarmy_stage", %*{
+        "repo": repoMcp,
+        "event_id": "evt-def-1",
+        "bead_id": "b1",
+        "stage": "coding",
+        "at": FixedAt
+      }))
+      check not mcp.isToolError
+
+      check eventRow(mdCli.dbPath) == eventRow(mdMcp.dbPath)
+      check eventRow(mdCli.dbPath)["source"].getStr == "swarmy-cli"
+    finally:
+      removeDir(repoCli)
+      removeDir(repoMcp)
+
   test "agent path persists equivalent event and agent records":
     let repoCli = tempRepo("agent-cli")
     let repoMcp = tempRepo("agent-mcp")

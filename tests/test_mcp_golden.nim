@@ -35,6 +35,9 @@ proc normalize(node: JsonNode): JsonNode =
   of JObject:
     result = newJObject()
     for key, value in node:
+      # The only `version` string on the current surface is serverInfo.version;
+      # the blanket match is intentional. Revisit if a tool schema/payload ever
+      # gains an unrelated `version` field that should be regression-locked.
       if key == "version" and value.kind == JString:
         result[key] = %"<version>"
       elif key == "text" and value.kind == JString and
@@ -89,3 +92,16 @@ suite "mcp protocol golden fixtures":
       "name": BeadSwarmPromptName
     }))["result"])
     check actual == readFixture("prompts_get.json")
+
+  test "unknown resource and prompt are rejected with invalid params":
+    let unknownResource = response(request(1, "resources/read", %*{
+      "uri": "swarmy://guidance/does-not-exist"
+    }))
+    check unknownResource.hasKey("error")
+    check unknownResource["error"]["code"].getInt == -32602
+
+    let unknownPrompt = response(request(2, "prompts/get", %*{
+      "name": "does-not-exist"
+    }))
+    check unknownPrompt.hasKey("error")
+    check unknownPrompt["error"]["code"].getInt == -32602

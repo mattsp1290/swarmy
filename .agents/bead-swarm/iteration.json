@@ -1,0 +1,11 @@
+{
+  "iteration": 34,
+  "branch": "bead-swarm/iteration-34-agent-facing-project-instructions",
+  "slug": "agent-facing-project-instructions",
+  "main_branch": "main",
+  "main_branch_source": "default",
+  "selected_beads": ["swarmy-z9e"],
+  "beads_done_pending_close": [],
+  "beads_blocked": [],
+  "beads_partial": []
+}

@@ -1,0 +1,34 @@
+{
+  "schema_version": "bead-swarm-history-v1",
+  "iteration": 29,
+  "branch": "bead-swarm/iteration-29-ci-and-release-packaging",
+  "slug": "ci-and-release-packaging",
+  "main_branch": "main",
+  "main_branch_source": "default",
+  "execution_mode": "orchestrator-subagent",
+  "degraded_reason": null,
+  "selected_beads": ["swarmy-1ek"],
+  "beads_done": ["swarmy-1ek"],
+  "beads_blocked": [],
+  "beads_partial": [],
+  "merge_target": "main",
+  "validation": [
+    "scripts/package.sh: PASS (produces dist/swarmy-0.1.0-<os>-<arch>.tar.gz + .sha256; verified contents)",
+    "ci.yml: YAML parses (ruby), no tabs, only real actions + choosenim",
+    "nimble test / npm run test --workspace apps/web: unchanged PASS",
+    "Note: GitHub Actions runs not executable locally; jobs mirror locally-validated commands"
+  ],
+  "review_mode": "reviewer-subagents",
+  "review_assurance": "normal",
+  "findings_fixed_re_reviewed": false,
+  "review_artifacts_local_only": true,
+  "review_blocker_summary": [
+    "Both reviewers APPROVE (no Critical/Important).",
+    "Applied nit: package.sh --help no longer prints the shebang line."
+  ],
+  "reviews": [
+    {"reviewer": "redowl", "verdict": "APPROVE", "artifact": "reviews/bead-swarm-iteration-29-ci-and-release-packaging/redowl/04-action-items.md"},
+    {"reviewer": "scout", "verdict": "APPROVE", "artifact": "reviews/bead-swarm-iteration-29-ci-and-release-packaging/scout/04-action-items.md"}
+  ],
+  "status": "complete"
+}

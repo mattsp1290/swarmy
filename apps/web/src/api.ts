@@ -264,6 +264,38 @@ export function recentEventsCursor(latestSeq: number, windowSize: number): numbe
   return Math.max(0, latestSeq - windowSize);
 }
 
+/**
+ * Pure helper: merge a freshly-fetched ascending-seq page of events into an
+ * existing newest-first list. `incoming` arrives in ASCENDING seq order; it is
+ * reversed and prepended ahead of `existing` so the combined list stays
+ * newest-first. Events are deduped by `event_id` (the first/newest occurrence
+ * wins) and the result is capped to `cap` items, dropping the oldest beyond the
+ * cap. Returns a new array; inputs are not mutated.
+ */
+export function mergeRecentEvents(
+  existing: RunEvent[],
+  incoming: RunEvent[],
+  cap: number
+): RunEvent[] {
+  const incomingNewestFirst = incoming.slice().reverse();
+  const combined = incomingNewestFirst.concat(existing);
+
+  const seen = new Set<string>();
+  const deduped: RunEvent[] = [];
+  for (const event of combined) {
+    if (seen.has(event.event_id)) {
+      continue;
+    }
+    seen.add(event.event_id);
+    deduped.push(event);
+  }
+
+  if (cap >= 0 && deduped.length > cap) {
+    return deduped.slice(0, cap);
+  }
+  return deduped;
+}
+
 /** Pure helper: true when an event marks a bead entering the blocked stage. */
 export function isBlockedEvent(e: RunEvent): boolean {
   return e.stage === 'blocked';

@@ -42,10 +42,36 @@ dd {
   box-sizing: border-box;
 }
 
+/* Accessible, zero-footprint status text. Removed from flow and clipped to a
+   1px box so it never participates in grid sizing or shifts visible controls. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
 .run-list {
   border-right: 1px solid #c7d2d7;
   background: #fbfcfc;
   padding: 1rem;
+  /* Pin the aside to the top of its grid row and size it to the viewport so its
+     geometry is driven by the run list + viewport, NOT by the detail column's
+     content height. Without this, the grid stretches the aside to match the
+     detail column; polling in a new activity row would then grow the detail
+     column and resize the aside, shifting its controls. Sticky keeps the
+     full-height border in view while the (taller) detail column scrolls. */
+  align-self: start;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  box-sizing: border-box;
 }
 
 .brand-row,
@@ -497,6 +523,11 @@ h1 {
   .run-list {
     border-right: 0;
     border-bottom: 1px solid #c7d2d7;
+    /* In the single-column stacked layout the aside is a normal block above the
+       detail; drop the desktop sticky/full-height pinning. */
+    position: static;
+    height: auto;
+    overflow-y: visible;
   }
 
   .detail-header {

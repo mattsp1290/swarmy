@@ -165,6 +165,91 @@ test('renders coding and review beads from fixture API data', async ({ page }) =
   await expect(failureRow).toContainText('blocked');
 });
 
+test('polls in new activity without shifting or resizing core controls', async ({
+  page
+}) => {
+  // Fake clock must be installed before navigation so the app's setInterval is
+  // driven by fastForward rather than wall-clock time.
+  await page.clock.install();
+
+  // Stateful events route: the first call (initial selection) returns the
+  // seeded page; subsequent calls (polls) return a single NEW event past the
+  // cursor, so a poll appends exactly one timeline row.
+  let eventsCalls = 0;
+  await page.route('**/api/runs', (route) =>
+    route.fulfill(json({ source_repo: '/Users/dev/git/swarmy', runs: [RUN_SUMMARY] }))
+  );
+  await page.route('**/api/runs/*', (route) => route.fulfill(json(RUN_DETAIL)));
+  await page.route('**/api/runs/*/events*', (route) => {
+    eventsCalls += 1;
+    if (eventsCalls === 1) {
+      route.fulfill(json(RUN_EVENTS_PAGE));
+      return;
+    }
+    const newEvent = {
+      event_id: 'evt-poll-1',
+      seq: 5,
+      occurred_at: '2026-06-24T10:06:00Z',
+      source: 'orchestrator',
+      event_type: 'stage.changed',
+      bead_id: 'swarmy-code-01',
+      stage: 'validation',
+      agent: { id: 'a1', name: 'coder-agent', kind: 'coding' },
+      payload: {}
+    };
+    route.fulfill(
+      json({
+        run_id: RUN_ID,
+        events: [newEvent],
+        next_cursor: 5,
+        has_more: false,
+        latest_seq: 5
+      })
+    );
+  });
+
+  await page.goto('/');
+
+  const activityBand = page.locator('section.detail-band[aria-label="Activity"]');
+  const timelineRows = activityBand.locator('.timeline-row');
+  await expect(timelineRows).toHaveCount(2);
+
+  // The fixture run is auto-selected.
+  const selectedRow = page.locator('.run-row.selected');
+  await expect(selectedRow).toHaveCount(1);
+  await expect(selectedRow).toHaveAttribute('aria-pressed', 'true');
+
+  // Capture core-control geometry before the poll.
+  const runList = page.locator('.run-list');
+  const refreshButton = page.locator('.refresh-button');
+  const detailHeader = page.locator('.detail-header');
+
+  const beforeRunList = await runList.boundingBox();
+  const beforeRefresh = await refreshButton.boundingBox();
+  const beforeHeader = await detailHeader.boundingBox();
+
+  // Advance past the poll interval to trigger exactly one background refresh.
+  await page.clock.fastForward(5500);
+
+  // The poll adds one new timeline row (newest-first, so it lands on top).
+  await expect(timelineRows).toHaveCount(3);
+  await expect(activityBand).toContainText('validation');
+
+  // Selection is preserved across the silent refresh.
+  const selectedAfter = page.locator('.run-row.selected');
+  await expect(selectedAfter).toHaveCount(1);
+  await expect(selectedAfter).toHaveAttribute('aria-pressed', 'true');
+
+  // Core controls must not move or resize: every box dimension is unchanged.
+  const afterRunList = await runList.boundingBox();
+  const afterRefresh = await refreshButton.boundingBox();
+  const afterHeader = await detailHeader.boundingBox();
+
+  expect(afterRunList).toEqual(beforeRunList);
+  expect(afterRefresh).toEqual(beforeRefresh);
+  expect(afterHeader).toEqual(beforeHeader);
+});
+
 test('surfaces the auth panel on a 401 from the API', async ({ page }) => {
   await page.route('**/api/runs', (route) =>
     route.fulfill({

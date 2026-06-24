@@ -1,0 +1,11 @@
+{
+  "iteration": 1,
+  "branch": "bead-swarm/iteration-1-scaffold-nim-svelte-monorepo-and-build",
+  "slug": "scaffold-nim-svelte-monorepo-and-build",
+  "main_branch": "main",
+  "main_branch_source": "default",
+  "selected_beads": ["swarmy-yx5"],
+  "beads_done_pending_close": [],
+  "beads_blocked": [],
+  "beads_partial": []
+}

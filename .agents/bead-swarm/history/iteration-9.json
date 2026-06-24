@@ -1,0 +1,48 @@
+{
+  "schema_version": "bead-swarm-history-v1",
+  "iteration": 9,
+  "branch": "bead-swarm/iteration-9-restart-persistence",
+  "slug": "restart-persistence",
+  "main_branch": "main",
+  "main_branch_source": "default",
+  "selected_beads": ["swarmy-5ph"],
+  "beads_done": ["swarmy-5ph"],
+  "beads_blocked": [],
+  "beads_partial": [],
+  "merge_target": "main",
+  "validation": [
+    "nim c -r --path:src --hints:off --verbosity:0 tests/test_restart_persistence.nim: pass",
+    "nimble test: pass",
+    "nimble build: pass",
+    "npm ci: pass",
+    "npm run build --workspace apps/web: pass",
+    "npm run build: pass",
+    "nimble buildAll: pass",
+    "git diff --check main...HEAD: pass",
+    "nim check --path:src tests/test_restart_persistence.nim: pass"
+  ],
+  "review_artifacts_local_only": true,
+  "review_blocker_summary": [
+    "process-boundary-verifier requested a post-restart append to prove durable cursor continuity; resolved by appending restart-event-2 in the reader process and verifying sequence, latest stage, event count, and next cursor",
+    "test-harness-skeptic requested subprocess output handling that cannot deadlock on an unread pipe; resolved by redirecting helper output to per-mode log files before waitForExit"
+  ],
+  "reviews": [
+    {
+      "reviewer": "process-boundary-verifier",
+      "verdict": "APPROVE",
+      "artifact": "reviews/bead-swarm-iteration-9-restart-persistence-2026-06-24/process-boundary-verifier/01-critical-and-important.md",
+      "latest_head_addendum": "reviews/bead-swarm-iteration-9-restart-persistence-2026-06-24/process-boundary-verifier/addendum.md",
+      "critical_count": 0,
+      "important_count": 1
+    },
+    {
+      "reviewer": "test-harness-skeptic",
+      "verdict": "APPROVE",
+      "artifact": "reviews/bead-swarm-iteration-9-restart-persistence-2026-06-24/test-harness-skeptic/01-critical-and-important.md",
+      "latest_head_addendum": "reviews/bead-swarm-iteration-9-restart-persistence-2026-06-24/test-harness-skeptic/addendum.md",
+      "critical_count": 0,
+      "important_count": 1
+    }
+  ],
+  "status": "complete"
+}

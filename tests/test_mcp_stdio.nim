@@ -60,21 +60,79 @@ suite "mcp stdio":
 
   test "bead-swarm guidance is exposed as MCP resource and prompt":
     let resources = response(request(1, "resources/list"))
-    check resources["result"]["resources"][0]["uri"].getStr == "/bead-swarm"
+    check resources["result"]["resources"][0]["uri"].getStr ==
+      BeadSwarmResourceUri
 
     let resource = response(request(2, "resources/read", %*{
-      "uri": "/bead-swarm"
+      "uri": BeadSwarmResourceUri
     }))
+    check resource["result"]["contents"][0]["uri"].getStr ==
+      BeadSwarmResourceUri
     check resource["result"]["contents"][0]["text"].getStr == BeadSwarmGuidance
 
     let prompts = response(request(3, "prompts/list"))
-    check prompts["result"]["prompts"][0]["name"].getStr == "bead-swarm"
+    check prompts["result"]["prompts"][0]["name"].getStr ==
+      BeadSwarmPromptName
 
     let prompt = response(request(4, "prompts/get", %*{
-      "name": "bead-swarm"
+      "name": BeadSwarmPromptName
     }))
     check prompt["result"]["messages"][0]["content"]["text"].getStr ==
       BeadSwarmGuidance
+
+  test "resource and prompt methods validate required identifiers":
+    let missingResourceParams = response($(%*{
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "resources/read"
+    }))
+    check missingResourceParams["error"]["code"].getInt == -32602
+    check "requires params" in missingResourceParams["error"]["message"].getStr
+
+    let missingResourceUri = response(request(2, "resources/read", %*{}))
+    check missingResourceUri["error"]["code"].getInt == -32602
+    check "required string parameter `uri`" in
+      missingResourceUri["error"]["message"].getStr
+
+    let nonStringResourceUri = response(request(3, "resources/read", %*{
+      "uri": 42
+    }))
+    check nonStringResourceUri["error"]["code"].getInt == -32602
+    check "required string parameter `uri`" in
+      nonStringResourceUri["error"]["message"].getStr
+
+    let unknownResource = response(request(4, "resources/read", %*{
+      "uri": "swarmy://guidance/missing"
+    }))
+    check unknownResource["error"]["code"].getInt == -32602
+    check "unknown resource: swarmy://guidance/missing" in
+      unknownResource["error"]["message"].getStr
+
+    let missingPromptParams = response($(%*{
+      "jsonrpc": "2.0",
+      "id": 5,
+      "method": "prompts/get"
+    }))
+    check missingPromptParams["error"]["code"].getInt == -32602
+    check "requires params" in missingPromptParams["error"]["message"].getStr
+
+    let missingPromptName = response(request(6, "prompts/get", %*{}))
+    check missingPromptName["error"]["code"].getInt == -32602
+    check "required string parameter `name`" in
+      missingPromptName["error"]["message"].getStr
+
+    let nonStringPromptName = response(request(7, "prompts/get", %*{
+      "name": 42
+    }))
+    check nonStringPromptName["error"]["code"].getInt == -32602
+    check "required string parameter `name`" in
+      nonStringPromptName["error"]["message"].getStr
+
+    let unknownPrompt = response(request(8, "prompts/get", %*{
+      "name": "missing"
+    }))
+    check unknownPrompt["error"]["code"].getInt == -32602
+    check "unknown prompt: missing" in unknownPrompt["error"]["message"].getStr
 
   test "tool calls initialize runs, write events, and fetch snapshots":
     withTempRepo proc(repo, dbPath: string) =

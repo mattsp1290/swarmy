@@ -69,6 +69,8 @@ suite "cli dispatch":
     check result.exitCode == 0
     check result.output == BeadSwarmGuidance
     check "swarmy init --repo PATH" in result.output
+    check "--stage complete" in result.output
+    check "--stage completion" notin result.output
 
   test "stage command records a durable bead stage event":
     withTempRepo proc(repo, dbPath: string) =

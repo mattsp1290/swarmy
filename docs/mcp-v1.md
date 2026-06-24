@@ -29,7 +29,7 @@ Tools:
 
 Resource:
 
-- `/bead-swarm`
+- `swarmy://guidance/bead-swarm`
 
 Prompt:
 

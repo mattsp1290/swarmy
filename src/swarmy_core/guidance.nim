@@ -11,13 +11,16 @@ Use Swarmy to make bead-swarm progress visible.
 
    `swarmy agent --repo PATH --event-id EVENT --agent AGENT_ID --name NAME`
 
-3. Record bead stage transitions during coding, validation, review, merge, and completion:
+3. Record bead stage transitions with Swarmy stage overlays. Writable stage names are `coding`, `validation`, `review`, `merge`, `blocked`, and `complete`.
 
    `swarmy stage --repo PATH --event-id EVENT --bead BEAD_ID --stage coding --agent AGENT_ID`
+   `swarmy stage --repo PATH --event-id EVENT --bead BEAD_ID --stage review --agent AGENT_ID`
+   `swarmy stage --repo PATH --event-id EVENT --bead BEAD_ID --stage merge --agent AGENT_ID`
+   `swarmy stage --repo PATH --event-id EVENT --bead BEAD_ID --stage complete --agent AGENT_ID`
 
 4. Fetch the current persisted Swarmy snapshot when another agent needs context:
 
-   `swarmy mcp` exposes `swarmy_snapshot`, or use the same persisted SQLite store through Swarmy APIs.
+   Start `swarmy mcp`, then call `swarmy_snapshot` with `{ "repo": "PATH" }`, or use the same persisted SQLite store through Swarmy APIs.
 
 Keep Beads as the canonical issue tracker. Swarmy records run-local agent activity and stage overlays so concurrent bead-swarm work can be observed without changing canonical Beads status early.
 """

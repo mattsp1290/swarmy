@@ -1,0 +1,11 @@
+{
+  "iteration": 24,
+  "branch": "bead-swarm/iteration-24-cli-mcp-parity-coverage",
+  "slug": "cli-mcp-parity-coverage",
+  "main_branch": "main",
+  "main_branch_source": "default",
+  "selected_beads": ["swarmy-vvw"],
+  "beads_done_pending_close": [],
+  "beads_blocked": [],
+  "beads_partial": []
+}

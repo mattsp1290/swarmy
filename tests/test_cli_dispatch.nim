@@ -163,6 +163,139 @@ suite "cli dispatch":
     check result.output == ""
     check "missing --bead" in result.error
 
+  test "snapshot requires source and rejects unused event ids":
+    withTempRepo proc(repo, dbPath: string) =
+      discard dbPath
+      let missingSource = run(@[
+        "snapshot",
+        "--repo", repo,
+        "--snapshot-json", "{}"
+      ])
+      check missingSource.exitCode == 2
+      check "missing --source" in missingSource.error
+
+      let eventId = run(@[
+        "snapshot",
+        "--repo", repo,
+        "--event-id", "unused",
+        "--source", "bd",
+        "--snapshot-json", "{}"
+      ])
+      check eventId.exitCode == 2
+      check "unexpected argument '--event-id'" in eventId.error
+
+  test "write commands reject invalid timestamps before persistence":
+    withTempRepo proc(repo, dbPath: string) =
+      let result = run(@[
+        "stage",
+        "--repo", repo,
+        "--event-id", "stage-event-1",
+        "--bead", "swarmy-2a5",
+        "--stage", "coding",
+        "--at", "not-a-time"
+      ])
+
+      check result.exitCode == 2
+      check "invalid --at" in result.error
+
+      var store = initializeStore(dbPath)
+      try:
+        check store.scalarInt("SELECT COUNT(*) FROM runs") == 0
+        check store.scalarInt("SELECT COUNT(*) FROM events") == 0
+      finally:
+        store.close()
+
+  test "generic event rejects reserved event types":
+    withTempRepo proc(repo, dbPath: string) =
+      let result = run(@[
+        "event",
+        "--repo", repo,
+        "--event-id", "event-1",
+        "--type", "stage.changed",
+        "--at", "2026-06-24T00:00:05Z"
+      ])
+
+      check result.exitCode == 2
+      check "use `swarmy stage`" in result.error
+
+      var store = initializeStore(dbPath)
+      try:
+        check store.scalarInt("SELECT COUNT(*) FROM events") == 0
+      finally:
+        store.close()
+
+  test "stage command rolls back bead creation when event append fails":
+    withTempRepo proc(repo, dbPath: string) =
+      let first = run(@[
+        "stage",
+        "--repo", repo,
+        "--event-id", "stage-event-1",
+        "--bead", "existing-bead",
+        "--stage", "coding",
+        "--at", "2026-06-24T00:00:06Z"
+      ])
+      check first.exitCode == 0
+
+      let duplicate = run(@[
+        "stage",
+        "--repo", repo,
+        "--event-id", "stage-event-1",
+        "--bead", "new-bead",
+        "--stage", "review",
+        "--at", "2026-06-24T00:00:07Z"
+      ])
+      check duplicate.exitCode == 1
+      check "different event content" in duplicate.error
+
+      var store = openStore(dbPath)
+      try:
+        check store.scalarInt(
+          "SELECT COUNT(*) FROM beads WHERE bead_id = 'new-bead'"
+        ) == 0
+        check store.scalarInt("SELECT COUNT(*) FROM events") == 1
+      finally:
+        store.close()
+
+  test "agent command rejects cross-run agent ids without mutation":
+    withTempRepo proc(repo, dbPath: string) =
+      var setup = initializeStore(dbPath)
+      try:
+        setup.db.exec(
+          """
+          INSERT INTO runs(run_id, repo_path, created_at, updated_at)
+          VALUES('run-2', '/other', '2026-06-24T00:00:00Z', '2026-06-24T00:00:00Z')
+          """
+        )
+        setup.db.exec(
+          """
+          INSERT INTO agents(agent_id, run_id, name, kind, created_at, updated_at)
+          VALUES('agent-1', 'run-2', 'Other Agent', 'agent', '2026-06-24T00:00:00Z', '2026-06-24T00:00:00Z')
+          """
+        )
+      finally:
+        setup.close()
+
+      let result = run(@[
+        "agent",
+        "--repo", repo,
+        "--event-id", "agent-event-1",
+        "--agent", "agent-1",
+        "--name", "Mutated Agent",
+        "--at", "2026-06-24T00:00:08Z"
+      ])
+
+      check result.exitCode == 1
+      check "belongs to another run" in result.error
+
+      var store = openStore(dbPath)
+      try:
+        check store.scalarString(
+          "SELECT name FROM agents WHERE agent_id = 'agent-1'"
+        ) == "Other Agent"
+        check store.scalarInt("SELECT COUNT(*) FROM events") == 0
+      finally:
+        store.close()
+
   test "unknown commands fail before reaching a module":
     let result = run(@["unknown"])
 

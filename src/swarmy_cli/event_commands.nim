@@ -25,13 +25,13 @@ proc ok(output = ""): CliResult =
 proc usage(command: string): string =
   case command
   of "event":
-    "swarmy event --event-id ID --type TYPE [--bead ID] [--agent ID] [--stage NAME] [--payload-json JSON] [--repo PATH] [--at RFC3339]\n"
+    "swarmy event --event-id ID --type TYPE [--bead ID] [--agent ID] [--stage NAME] [--payload-json JSON] [--repo PATH] [--at YYYY-MM-DDTHH:MM:SSZ]\n"
   of "stage":
-    "swarmy stage --event-id ID --bead ID --stage NAME [--agent ID] [--title TITLE] [--payload-json JSON] [--repo PATH] [--at RFC3339]\n"
+    "swarmy stage --event-id ID --bead ID --stage NAME [--agent ID] [--title TITLE] [--payload-json JSON] [--repo PATH] [--at YYYY-MM-DDTHH:MM:SSZ]\n"
   of "agent":
-    "swarmy agent --event-id ID --agent ID --name NAME [--kind KIND] [--metadata-json JSON] [--repo PATH] [--at RFC3339]\n"
+    "swarmy agent --event-id ID --agent ID --name NAME [--kind KIND] [--metadata-json JSON] [--repo PATH] [--at YYYY-MM-DDTHH:MM:SSZ]\n"
   of "snapshot":
-    "swarmy snapshot --source SOURCE --snapshot-json JSON [--bead ID] [--repo PATH] [--at RFC3339]\n"
+    "swarmy snapshot --source SOURCE --snapshot-json JSON [--bead ID] [--repo PATH] [--at YYYY-MM-DDTHH:MM:SSZ]\n"
   else:
     "swarmy " & command & ": unknown write command\n"
 
@@ -49,6 +49,41 @@ proc validateJson(value, name, command: string): tuple[ok: bool, error: string] 
     (true, "")
   except JsonParsingError as err:
     (false, "swarmy " & command & ": invalid " & name & ": " & err.msg & "\n")
+
+proc isDigitAt(value: string, index: int): bool =
+  index < value.len and value[index] in {'0' .. '9'}
+
+proc validTimestamp(value: string): bool =
+  value.len == 20 and
+    isDigitAt(value, 0) and
+    isDigitAt(value, 1) and
+    isDigitAt(value, 2) and
+    isDigitAt(value, 3) and
+    value[4] == '-' and
+    isDigitAt(value, 5) and
+    isDigitAt(value, 6) and
+    value[7] == '-' and
+    isDigitAt(value, 8) and
+    isDigitAt(value, 9) and
+    value[10] == 'T' and
+    isDigitAt(value, 11) and
+    isDigitAt(value, 12) and
+    value[13] == ':' and
+    isDigitAt(value, 14) and
+    isDigitAt(value, 15) and
+    value[16] == ':' and
+    isDigitAt(value, 17) and
+    isDigitAt(value, 18) and
+    value[19] == 'Z'
+
+proc validateAt(value, command: string): tuple[ok: bool, error: string] =
+  if value.validTimestamp:
+    return (true, "")
+  (
+    false,
+    "swarmy " & command &
+      ": invalid --at; expected YYYY-MM-DDTHH:MM:SSZ\n"
+  )
 
 proc loadMetadata(repo: string): RunMetadata =
   let canonical = canonicalRepoPath(repo)
@@ -73,7 +108,6 @@ proc withStore(repo: string, body: proc(store: Store, metadata: RunMetadata)) =
   let metadata = loadMetadata(repo)
   var store = initializeStore(metadata.dbPath)
   try:
-    store.ensureRun(metadata)
     body(store, metadata)
   finally:
     store.close()
@@ -82,7 +116,8 @@ proc parseCommon(
   command: string,
   args: seq[string],
   i: var int,
-  common: var CommonOptions
+  common: var CommonOptions,
+  allowEventId = true
 ): tuple[handled: bool, ok: bool, error: string] =
   case args[i]
   of "--repo":
@@ -103,10 +138,15 @@ proc parseCommon(
     let value = requireValue(args, i, "--at", command)
     if not value.ok:
       return (true, false, value.error)
+    let checked = validateAt(value.value, command)
+    if not checked.ok:
+      return (true, false, checked.error)
     common.at = value.value
     i += 2
     (true, true, "")
   of "--event-id":
+    if not allowEventId:
+      return (false, true, "")
     let value = requireValue(args, i, "--event-id", command)
     if not value.ok:
       return (true, false, value.error)
@@ -188,21 +228,33 @@ proc runEvent*(args: seq[string]): CliResult =
     return missing("event", "--event-id")
   if eventType.len == 0:
     return missing("event", "--type")
+  if eventType == StageEventType:
+    return CliResult(
+      exitCode: 2,
+      error: "swarmy event: use `swarmy stage` for stage.changed events\n"
+    )
+  if eventType == "agent.changed":
+    return CliResult(
+      exitCode: 2,
+      error: "swarmy event: use `swarmy agent` for agent.changed events\n"
+    )
 
   try:
     var seq: int64
     withStore common.repo, proc(store: Store, metadata: RunMetadata) =
-      seq = store.appendEvent(
-        common.eventId.get,
-        metadata.runId,
-        common.at,
-        common.source,
-        eventType,
-        beadId = beadId,
-        agentId = agentId,
-        stage = stage,
-        payloadJson = payloadJson
-      )
+      store.db.transaction:
+        store.ensureRun(metadata)
+        seq = store.appendEventInTransaction(
+          common.eventId.get,
+          metadata.runId,
+          common.at,
+          common.source,
+          eventType,
+          beadId = beadId,
+          agentId = agentId,
+          stage = stage,
+          payloadJson = payloadJson
+        )
     ok("swarmy event: " & common.eventId.get & " seq " & $seq & "\n")
   except CatchableError as err:
     fail("event", err.msg)
@@ -285,20 +337,31 @@ proc runStage*(args: seq[string]): CliResult =
     let stage = parseWritableStage(stageName)
     var seq: int64
     withStore common.repo, proc(store: Store, metadata: RunMetadata) =
-      store.ensureBead(metadata, beadId, title, common.at)
-      seq = store.recordStageEvent(
-        common.eventId.get,
-        metadata.runId,
-        beadId,
-        common.at,
-        stage,
-        agentId = agentId,
-        source = common.source,
-        payloadJson = payloadJson
-      )
+      store.db.transaction:
+        store.ensureRun(metadata)
+        store.ensureBead(metadata, beadId, title, common.at)
+        seq = store.appendEventInTransaction(
+          common.eventId.get,
+          metadata.runId,
+          common.at,
+          common.source,
+          StageEventType,
+          beadId = some(beadId),
+          agentId = agentId,
+          stage = some(stage.stageName),
+          payloadJson = payloadJson
+        )
     ok("swarmy stage: " & beadId & " " & $stage & " seq " & $seq & "\n")
   except CatchableError as err:
     fail("stage", err.msg)
+
+proc assertAgentWritable(store: Store, metadata: RunMetadata, agentId: string) =
+  let owner = store.db.one(
+    "SELECT run_id FROM agents WHERE agent_id = ?",
+    agentId
+  )
+  if owner.isSome and owner.get["run_id"].fromDbValue(string) != metadata.runId:
+    raise newException(ValueError, "agent id belongs to another run: " & agentId)
 
 proc runAgent*(args: seq[string]): CliResult =
   var common = newCommon()
@@ -356,46 +419,50 @@ proc runAgent*(args: seq[string]): CliResult =
   try:
     var seq: int64
     withStore common.repo, proc(store: Store, metadata: RunMetadata) =
-      store.db.exec(
-        """
-        INSERT INTO agents(agent_id, run_id, name, kind, created_at, updated_at, metadata_json)
-        VALUES(?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(agent_id) DO UPDATE SET
-          name = excluded.name,
-          kind = excluded.kind,
-          updated_at = excluded.updated_at,
-          metadata_json = excluded.metadata_json
-        """,
-        agentId,
-        metadata.runId,
-        name,
-        kind,
-        common.at,
-        common.at,
-        metadataJson
-      )
-      seq = store.appendEvent(
-        common.eventId.get,
-        metadata.runId,
-        common.at,
-        common.source,
-        "agent.changed",
-        agentId = some(agentId),
-        payloadJson = metadataJson
-      )
+      store.db.transaction:
+        store.ensureRun(metadata)
+        store.assertAgentWritable(metadata, agentId)
+        store.db.exec(
+          """
+          INSERT INTO agents(agent_id, run_id, name, kind, created_at, updated_at, metadata_json)
+          VALUES(?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(agent_id) DO UPDATE SET
+            name = excluded.name,
+            kind = excluded.kind,
+            updated_at = excluded.updated_at,
+            metadata_json = excluded.metadata_json
+          WHERE agents.run_id = excluded.run_id
+          """,
+          agentId,
+          metadata.runId,
+          name,
+          kind,
+          common.at,
+          common.at,
+          metadataJson
+        )
+        seq = store.appendEventInTransaction(
+          common.eventId.get,
+          metadata.runId,
+          common.at,
+          common.source,
+          "agent.changed",
+          agentId = some(agentId),
+          payloadJson = metadataJson
+        )
     ok("swarmy agent: " & agentId & " seq " & $seq & "\n")
   except CatchableError as err:
     fail("agent", err.msg)
 
 proc runSnapshot*(args: seq[string]): CliResult =
   var common = newCommon()
-  common.source = "bd"
+  common.source = ""
   var beadId = none(string)
   var snapshotJson = ""
 
   var i = 0
   while i < args.len:
-    let parsed = parseCommon("snapshot", args, i, common)
+    let parsed = parseCommon("snapshot", args, i, common, allowEventId = false)
     if parsed.handled:
       if not parsed.ok:
         return CliResult(exitCode: 2, error: parsed.error)
@@ -420,24 +487,28 @@ proc runSnapshot*(args: seq[string]): CliResult =
     else:
       return CliResult(exitCode: 2, error: "swarmy snapshot: unexpected argument '" & args[i] & "'\n")
 
+  if common.source.len == 0:
+    return missing("snapshot", "--source")
   if snapshotJson.len == 0:
     return missing("snapshot", "--snapshot-json")
 
   try:
     var snapshotId: int64
     withStore common.repo, proc(store: Store, metadata: RunMetadata) =
-      store.db.exec(
-        """
-        INSERT INTO snapshots(run_id, bead_id, captured_at, source, snapshot_json)
-        VALUES(?, ?, ?, ?, ?)
-        """,
-        metadata.runId,
-        beadId,
-        common.at,
-        common.source,
-        snapshotJson
-      )
-      snapshotId = store.db.value("SELECT last_insert_rowid()").get.fromDbValue(int64)
+      store.db.transaction:
+        store.ensureRun(metadata)
+        store.db.exec(
+          """
+          INSERT INTO snapshots(run_id, bead_id, captured_at, source, snapshot_json)
+          VALUES(?, ?, ?, ?, ?)
+          """,
+          metadata.runId,
+          beadId,
+          common.at,
+          common.source,
+          snapshotJson
+        )
+        snapshotId = store.db.value("SELECT last_insert_rowid()").get.fromDbValue(int64)
     ok("swarmy snapshot: " & $snapshotId & "\n")
   except CatchableError as err:
     fail("snapshot", err.msg)

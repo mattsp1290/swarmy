@@ -209,6 +209,75 @@ proc initializeStore*(path: string): Store =
 proc close*(store: var Store) =
   store.db.close()
 
+proc appendEventInTransaction*(
+  store: Store,
+  eventId: string,
+  runId: string,
+  occurredAt: string,
+  source: string,
+  eventType: string,
+  beadId: Option[string] = none(string),
+  agentId: Option[string] = none(string),
+  stage: Option[string] = none(string),
+  payloadJson = "{}"
+): int64 =
+  store.validateEventAgentRun(runId, agentId)
+  store.db.exec(
+    "INSERT OR IGNORE INTO event_cursors(run_id, next_seq) VALUES(?, 1)",
+    runId
+  )
+
+  let existing = store.db.one(
+    """
+    SELECT run_id, seq, occurred_at, source, event_type,
+      bead_id, agent_id, stage, payload_json
+    FROM events
+    WHERE event_id = ?
+    """,
+    eventId
+  )
+  if existing.isSome:
+    let row = existing.get
+    if not row.sameEventContent(
+      runId,
+      occurredAt,
+      source,
+      eventType,
+      beadId,
+      agentId,
+      stage,
+      payloadJson
+    ):
+      raise newException(
+        ValueError,
+        "event id already exists with different event content: " & eventId
+      )
+    result = row["seq"].fromDbValue(int64)
+  else:
+    let seq = store.db.value(
+      "SELECT next_seq FROM event_cursors WHERE run_id = ?",
+      runId
+    ).get.fromDbValue(int64)
+    let params = toDbValues(
+      eventId, runId, seq, occurredAt, source, eventType,
+      beadId, agentId, stage, payloadJson
+    )
+    store.db.exec(
+      """
+      INSERT INTO events(
+        event_id, run_id, seq, occurred_at, source, event_type,
+        bead_id, agent_id, stage, payload_json
+      )
+      VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      """,
+      params
+    )
+    store.db.exec(
+      "UPDATE event_cursors SET next_seq = next_seq + 1 WHERE run_id = ?",
+      runId
+    )
+    result = seq
+
 proc appendEvent*(
   store: Store,
   eventId: string,
@@ -222,59 +291,14 @@ proc appendEvent*(
   payloadJson = "{}"
 ): int64 =
   store.db.transaction:
-    store.validateEventAgentRun(runId, agentId)
-    store.db.exec(
-      "INSERT OR IGNORE INTO event_cursors(run_id, next_seq) VALUES(?, 1)",
-      runId
+    result = store.appendEventInTransaction(
+      eventId,
+      runId,
+      occurredAt,
+      source,
+      eventType,
+      beadId = beadId,
+      agentId = agentId,
+      stage = stage,
+      payloadJson = payloadJson
     )
-
-    let existing = store.db.one(
-      """
-      SELECT run_id, seq, occurred_at, source, event_type,
-        bead_id, agent_id, stage, payload_json
-      FROM events
-      WHERE event_id = ?
-      """,
-      eventId
-    )
-    if existing.isSome:
-      let row = existing.get
-      if not row.sameEventContent(
-        runId,
-        occurredAt,
-        source,
-        eventType,
-        beadId,
-        agentId,
-        stage,
-        payloadJson
-      ):
-        raise newException(
-          ValueError,
-          "event id already exists with different event content: " & eventId
-        )
-      result = row["seq"].fromDbValue(int64)
-    else:
-      let seq = store.db.value(
-        "SELECT next_seq FROM event_cursors WHERE run_id = ?",
-        runId
-      ).get.fromDbValue(int64)
-      let params = toDbValues(
-        eventId, runId, seq, occurredAt, source, eventType,
-        beadId, agentId, stage, payloadJson
-      )
-      store.db.exec(
-        """
-        INSERT INTO events(
-          event_id, run_id, seq, occurred_at, source, event_type,
-          bead_id, agent_id, stage, payload_json
-        )
-        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        params
-      )
-      store.db.exec(
-        "UPDATE event_cursors SET next_seq = next_seq + 1 WHERE run_id = ?",
-        runId
-      )
-      result = seq

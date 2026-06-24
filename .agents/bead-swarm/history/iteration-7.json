@@ -1,0 +1,48 @@
+{
+  "schema_version": "bead-swarm-history-v1",
+  "iteration": 7,
+  "branch": "bead-swarm/iteration-7-reconstruct-bead-snapshots",
+  "slug": "reconstruct-bead-snapshots",
+  "main_branch": "main",
+  "main_branch_source": "default",
+  "selected_beads": ["swarmy-3z4"],
+  "beads_done": ["swarmy-3z4"],
+  "beads_blocked": [],
+  "beads_partial": [],
+  "merge_target": "main",
+  "validation": [
+    "nimble test: pass",
+    "nimble build: pass",
+    "npm ci: pass",
+    "npm run build --workspace apps/web: pass",
+    "npm run build: pass",
+    "nimble buildAll: pass",
+    "git diff --check main...HEAD: pass",
+    "nim check --path:src src/swarmy_core/bd_adapter.nim: pass",
+    "nim check --path:src tests/test_bd_adapter.nim: pass"
+  ],
+  "review_artifacts_local_only": true,
+  "review_blocker_summary": [
+    "bd-command-boundary requested real missing show classification, safer output/timeout handling, and no exported arbitrary runner; resolved with deleted/renamed classification, temp-file output capture, private allowlisted runner",
+    "snapshot-parser-semantics requested real missing show classification and wrong-typed optional scalar rejection; resolved with typed optional field validators and regression tests"
+  ],
+  "reviews": [
+    {
+      "reviewer": "bd-command-boundary",
+      "verdict": "APPROVE",
+      "artifact": "reviews/bead-swarm-iteration-7-reconstruct-bead-snapshots-2026-06-24/bd-command-boundary/findings.md",
+      "latest_head_addendum": "reviews/bead-swarm-iteration-7-reconstruct-bead-snapshots-2026-06-24/bd-command-boundary/addendum.md",
+      "critical_count": 0,
+      "important_count": 3
+    },
+    {
+      "reviewer": "snapshot-parser-semantics",
+      "verdict": "APPROVE",
+      "artifact": "reviews/bead-swarm-iteration-7-reconstruct-bead-snapshots-2026-06-24/snapshot-parser-semantics/findings.md",
+      "latest_head_addendum": "reviews/bead-swarm-iteration-7-reconstruct-bead-snapshots-2026-06-24/snapshot-parser-semantics/addendum.md",
+      "critical_count": 0,
+      "important_count": 2
+    }
+  ],
+  "status": "complete"
+}

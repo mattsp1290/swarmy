@@ -1,6 +1,51 @@
 # swarmy
 Loops made visible
 
+Swarmy is a Nim + Svelte monorepo that makes concurrent `/goal /bead-swarm` runs
+visible: agents record run-local state through a CLI or MCP surface, and a Svelte
+dashboard shows active beads, their coding/review stages, agents, failures, and a
+polling activity timeline.
+
+## Documentation
+
+- [`AGENTS.md`](AGENTS.md) — how agents record bead-swarm state (CLI + MCP).
+- [`docs/RUNBOOK.md`](docs/RUNBOOK.md) — operating Swarmy and recovery.
+- [`docs/RELEASING.md`](docs/RELEASING.md) — CI gates and release packaging.
+- [`docs/mcp-v1.md`](docs/mcp-v1.md) — MCP surface reference.
+
+## Build and run locally
+
+Prerequisites: Nim `>= 2.2.4` (with Nimble) and Node `>= 22` (with npm). The
+backend uses an embedded SQLite store, so no external database is required.
+
+Install Node workspaces once, then build each half (or both via the root script):
+
+```sh
+npm ci                                   # install web workspace deps
+nimble build                             # build the ./swarmy backend binary
+npm run build --workspace apps/web       # build the Svelte bundle to apps/web/dist
+npm run build                            # convenience: nimble build + web build
+```
+
+Run the test suites:
+
+```sh
+nimble test                              # Nim backend unit/integration tests
+npm run test --workspace apps/web        # frontend unit tests (node:test)
+npm run test:ui --workspace apps/web     # Playwright UI smoke (desktop + mobile)
+npm run test:smoke                       # end-to-end shell smoke (tests/smoke.sh)
+```
+
+Start the local server (after building the web bundle):
+
+```sh
+swarmy init --repo .                     # create ./.swarmy/run.json (store is created on first write)
+swarmy serve --repo . --static-dir apps/web/dist
+```
+
+See [`docs/RUNBOOK.md`](docs/RUNBOOK.md) for the MCP host setup, stage
+interpretation, diagnostics (`swarmy doctor`), and recovery.
+
 ## Serve
 
 `swarmy serve` binds to `127.0.0.1:8080` by default and serves `apps/web/dist`.

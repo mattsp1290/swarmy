@@ -1,0 +1,48 @@
+{
+  "schema_version": "bead-swarm-history-v1",
+  "iteration": 6,
+  "branch": "bead-swarm/iteration-6-concurrent-writer-safety",
+  "slug": "concurrent-writer-safety",
+  "main_branch": "main",
+  "main_branch_source": "default",
+  "selected_beads": ["swarmy-1j8"],
+  "beads_done": ["swarmy-1j8"],
+  "beads_blocked": [],
+  "beads_partial": [],
+  "merge_target": "main",
+  "validation": [
+    "nimble test: pass",
+    "nimble build: pass",
+    "npm ci: pass",
+    "npm run build --workspace apps/web: pass",
+    "npm run build: pass",
+    "nimble buildAll: pass",
+    "git diff --check main...HEAD: pass",
+    "nim check --path:src tests/test_concurrent_writers.nim: pass",
+    "nim check --path:src src/swarmy_core/persistence.nim: pass"
+  ],
+  "review_artifacts_local_only": true,
+  "review_blocker_summary": [
+    "sqlite-lock-safety requested timeout-safe child cleanup and deterministic lock contention; resolved with process kill-on-timeout, readiness barrier, and parent-held BEGIN IMMEDIATE lock",
+    "process-writer-isolation requested simultaneous start/overlap proof and writer-prefix run assertions; resolved with ready/start/result files and per-prefix SQL assertions"
+  ],
+  "reviews": [
+    {
+      "reviewer": "sqlite-lock-safety",
+      "verdict": "APPROVE",
+      "artifact": "reviews/bead-swarm-iteration-6-concurrent-writer-safety-2026-06-24/sqlite-lock-safety/findings.md",
+      "latest_head_addendum": "reviews/bead-swarm-iteration-6-concurrent-writer-safety-2026-06-24/sqlite-lock-safety/addendum.md",
+      "critical_count": 0,
+      "important_count": 2
+    },
+    {
+      "reviewer": "process-writer-isolation",
+      "verdict": "APPROVE",
+      "artifact": "reviews/bead-swarm-iteration-6-concurrent-writer-safety-2026-06-24/process-writer-isolation/findings.md",
+      "latest_head_addendum": "reviews/bead-swarm-iteration-6-concurrent-writer-safety-2026-06-24/process-writer-isolation/addendum.md",
+      "critical_count": 0,
+      "important_count": 2
+    }
+  ],
+  "status": "complete"
+}

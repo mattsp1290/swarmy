@@ -1,6 +1,6 @@
 import std/strutils
 
-import swarmy_cli/[init, mcp, serve]
+import swarmy_cli/[event_commands, init, mcp, serve]
 import swarmy_cli/dispatch_types
 import swarmy_core/app
 
@@ -14,6 +14,10 @@ swarmy - make bead-swarm runs visible
 Usage:
   swarmy --version
   swarmy init [--repo PATH] [--db PATH]
+  swarmy event --event-id ID --type TYPE [options]
+  swarmy stage --event-id ID --bead ID --stage NAME [options]
+  swarmy agent --event-id ID --agent ID --name NAME [options]
+  swarmy snapshot --source SOURCE --snapshot-json JSON [options]
   swarmy serve
   swarmy mcp
 """.strip(leading = false) & "\n"
@@ -27,6 +31,14 @@ proc run*(args: seq[string]): CliResult =
     ok(Name & " " & Version & "\n")
   of "init":
     init.run(args[1 .. ^1])
+  of "event":
+    event_commands.runEvent(args[1 .. ^1])
+  of "stage":
+    event_commands.runStage(args[1 .. ^1])
+  of "agent":
+    event_commands.runAgent(args[1 .. ^1])
+  of "snapshot":
+    event_commands.runSnapshot(args[1 .. ^1])
   of "serve":
     serve.run(args[1 .. ^1])
   of "mcp":

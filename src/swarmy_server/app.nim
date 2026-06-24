@@ -16,6 +16,10 @@ type ServerConfig* = object
   authToken*: string
   maxBodyBytes*: int
 
+const
+  DefaultEventPageLimit = 100
+  MaxEventPageLimit = 500
+
 var staticRoot = ""
 var repoRoot = ""
 var apiAuthToken = ""
@@ -336,6 +340,54 @@ proc stageNode(row: ResultRow): JsonNode =
     }
   else:
     result["agent"] = newJNull()
+
+proc eventNode(row: ResultRow): JsonNode =
+  result = %*{
+    "event_id": row["event_id"].fromDbValue(string),
+    "seq": row["seq"].fromDbValue(int64),
+    "occurred_at": row["occurred_at"].fromDbValue(string),
+    "source": row["source"].fromDbValue(string),
+    "event_type": row["event_type"].fromDbValue(string),
+    "payload": jsonFromDb(row["payload_json"].fromDbValue(string))
+  }
+
+  let beadId = row.optionString("bead_id")
+  result["bead_id"] = if beadId.isSome: %beadId.get else: newJNull()
+
+  let stage = row.optionString("stage")
+  result["stage"] = if stage.isSome: %stage.get else: newJNull()
+
+  let agentId = row.optionString("agent_id")
+  if agentId.isSome:
+    result["agent"] = %*{
+      "id": agentId.get,
+      "name": row.optionString("agent_name").get(""),
+      "kind": row.optionString("agent_kind").get("")
+    }
+  else:
+    result["agent"] = newJNull()
+
+proc parseEventCursor(raw: string): tuple[ok: bool, value: int64] =
+  if raw.len == 0:
+    return (true, 0'i64)
+  try:
+    let value = parseBiggestInt(raw)
+    if value < 0:
+      return (false, 0'i64)
+    (true, value.int64)
+  except ValueError:
+    (false, 0'i64)
+
+proc parseEventLimit(raw: string): tuple[ok: bool, value: int] =
+  if raw.len == 0:
+    return (true, DefaultEventPageLimit)
+  try:
+    let value = parseInt(raw)
+    if value < 1:
+      return (false, 0)
+    (true, min(value, MaxEventPageLimit))
+  except ValueError:
+    (false, 0)
 
 proc latestStageNode(store: Store, runId, beadId: string): Option[JsonNode] =
   let row = store.db.one(
@@ -772,6 +824,78 @@ proc runStages(ctx: Context) {.gcsafe.} =
 
   ctx.json(%*{"run_id": runId, "stages": stages})
 
+proc runEvents(ctx: Context) {.gcsafe.} =
+  if not validateApiRequest(ctx):
+    return
+
+  let runId = ctx.param("run_id")
+
+  let cursor = parseEventCursor(ctx.input("after", ""))
+  if not cursor.ok:
+    ctx.status(400).json(%*{"error": "invalid cursor", "param": "after"})
+    return
+
+  let limit = parseEventLimit(ctx.input("limit", ""))
+  if not limit.ok:
+    ctx.status(400).json(%*{"error": "invalid limit", "param": "limit"})
+    return
+
+  let maybeStore = openConfiguredStore()
+  if maybeStore.isNone:
+    ctx.status(404).json(%*{"error": "run not found", "run_id": runId})
+    return
+
+  var store = maybeStore.get
+  defer: store.close()
+
+  if store.findRunSummary(runId).isNone:
+    ctx.status(404).json(%*{"error": "run not found", "run_id": runId})
+    return
+
+  let latestSeq = store.db.value(
+    "SELECT COALESCE(MAX(seq), 0) FROM events WHERE run_id = ?",
+    runId
+  ).get.fromDbValue(int64)
+
+  # Fetch one extra row to detect whether more events remain past this page.
+  var page: seq[JsonNode]
+  for row in store.db.iterate(
+    """
+    SELECT e.event_id, e.seq, e.occurred_at, e.source, e.event_type,
+      e.bead_id, e.stage, e.agent_id, e.payload_json,
+      a.name AS agent_name, a.kind AS agent_kind
+    FROM events e
+    LEFT JOIN agents a ON a.run_id = e.run_id AND a.agent_id = e.agent_id
+    WHERE e.run_id = ? AND e.seq > ?
+    ORDER BY e.seq ASC
+    LIMIT ?
+    """,
+    runId,
+    cursor.value,
+    limit.value + 1
+  ):
+    page.add row.eventNode()
+
+  let hasMore = page.len > limit.value
+  if hasMore:
+    page.setLen(limit.value)
+
+  var events = newJArray()
+  for node in page:
+    events.add node
+
+  var nextCursor = cursor.value
+  if events.len > 0:
+    nextCursor = events[^1]["seq"].getBiggestInt
+
+  ctx.json(%*{
+    "run_id": runId,
+    "events": events,
+    "next_cursor": nextCursor,
+    "has_more": hasMore,
+    "latest_seq": latestSeq
+  })
+
 proc registerRoutes*(
   staticDir: string,
   repoPath = ".",
@@ -790,6 +914,7 @@ proc registerRoutes*(
   Route.get("/api/runs/:run_id/agents", runAgents)
   Route.get("/api/runs/:run_id/agents/:agent_id", agentDetail)
   Route.get("/api/runs/:run_id/stages", runStages)
+  Route.get("/api/runs/:run_id/events", runEvents)
   Route.get("/api/runs/:run_id", runDetail)
   Route.get("/", appIndex)
   Route.get("/assets/:file", appAsset)

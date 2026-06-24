@@ -1,4 +1,4 @@
-import std/[asyncdispatch, httpcore, json, options, os, times, unittest]
+import std/[asyncdispatch, httpcore, json, options, os, tables, times, unittest]
 
 import jazzy
 import tiny_sqlite
@@ -120,6 +120,16 @@ proc dispatchRequest(
 
 proc dispatchGet(path: string): Context =
   dispatchRequest(path)
+
+proc dispatchQuery(path: string, query: openArray[(string, string)]): Context =
+  let req = JazzyRequest(
+    httpMethod: HttpGet,
+    path: path,
+    headers: newHttpHeaders(),
+    queryParams: query.toTable
+  )
+  result = newContext(req)
+  waitFor dispatch(result)
 
 suite "server app":
   test "blocking serve fails fast when web build is missing":
@@ -512,3 +522,150 @@ suite "server app":
       let missingRunAgent = dispatchGet("/api/runs/missing-run/agents/agent-1")
       check missingRunAgent.response.code == 404
       check parseJson(missingRunAgent.response.body)["run_id"].getStr == "missing-run"
+
+  test "streams run-scoped events after a cursor with deterministic ordering":
+    withTempRepoAndDist proc(repo, dist, dbPath, runId: string) =
+      var store = initializeStore(dbPath)
+      try:
+        store.insertRun(
+          runId,
+          repo,
+          "active",
+          "2026-06-24T00:00:00Z",
+          "2026-06-24T00:00:05Z"
+        )
+        store.insertRun(
+          "run-other",
+          repo / "other",
+          "active",
+          "2026-06-24T00:00:00Z",
+          "2026-06-24T00:00:05Z"
+        )
+        store.insertBead(runId, "swarmy-gyl", "Event cursor", "open")
+        store.insertBead("run-other", "other-bead", "Other run bead", "open")
+        store.insertAgent(runId, "agent-1", "Cursor Agent")
+        discard store.recordStageEvent(
+          "event-1",
+          runId,
+          "swarmy-gyl",
+          "2026-06-24T00:00:01Z",
+          stageCoding,
+          agentId = some("agent-1")
+        )
+        discard store.recordStageEvent(
+          "event-2",
+          runId,
+          "swarmy-gyl",
+          "2026-06-24T00:00:02Z",
+          stageValidation,
+          agentId = some("agent-1")
+        )
+        discard store.appendEvent(
+          "event-3",
+          runId,
+          "2026-06-24T00:00:03Z",
+          "swarmy",
+          "bead.note",
+          beadId = some("swarmy-gyl")
+        )
+        discard store.recordStageEvent(
+          "event-other",
+          "run-other",
+          "other-bead",
+          "2026-06-24T00:00:02Z",
+          stageComplete
+        )
+      finally:
+        store.close()
+
+      server_app.registerRoutes(dist, repo)
+
+      # First page from the beginning, with one event still pending.
+      let first = dispatchQuery(
+        "/api/runs/" & runId & "/events",
+        {"after": "0", "limit": "2"}
+      )
+      check first.response.code == 200
+      let firstPayload = parseJson(first.response.body)
+      check firstPayload["run_id"].getStr == runId
+      check firstPayload["events"].len == 2
+      check firstPayload["events"][0]["seq"].getInt == 1
+      check firstPayload["events"][0]["event_id"].getStr == "event-1"
+      check firstPayload["events"][0]["stage"].getStr == "coding"
+      check firstPayload["events"][0]["agent"]["id"].getStr == "agent-1"
+      check firstPayload["events"][1]["seq"].getInt == 2
+      check firstPayload["has_more"].getBool == true
+      check firstPayload["next_cursor"].getInt == 2
+      check firstPayload["latest_seq"].getInt == 3
+
+      # Second page using the returned cursor: no missing or duplicated events.
+      let second = dispatchQuery(
+        "/api/runs/" & runId & "/events",
+        {"after": "2", "limit": "2"}
+      )
+      let secondPayload = parseJson(second.response.body)
+      check secondPayload["events"].len == 1
+      check secondPayload["events"][0]["seq"].getInt == 3
+      check secondPayload["events"][0]["event_type"].getStr == "bead.note"
+      check secondPayload["events"][0]["stage"].kind == JNull
+      check secondPayload["events"][0]["agent"].kind == JNull
+      check secondPayload["has_more"].getBool == false
+      check secondPayload["next_cursor"].getInt == 3
+
+      # Caught up: cursor at head returns empty and stays put.
+      let caughtUp = dispatchQuery(
+        "/api/runs/" & runId & "/events",
+        {"after": "3"}
+      )
+      let caughtUpPayload = parseJson(caughtUp.response.body)
+      check caughtUpPayload["events"].len == 0
+      check caughtUpPayload["has_more"].getBool == false
+      check caughtUpPayload["next_cursor"].getInt == 3
+      check caughtUpPayload["latest_seq"].getInt == 3
+
+      # Run isolation: another swarm's events never leak into this cursor.
+      let isolated = dispatchQuery(
+        "/api/runs/" & runId & "/events",
+        {"after": "0"}
+      )
+      let isolatedPayload = parseJson(isolated.response.body)
+      check isolatedPayload["events"].len == 3
+      for ev in isolatedPayload["events"]:
+        check ev["event_id"].getStr != "event-other"
+
+      # Invalid cursor and limit values are rejected.
+      let badCursor = dispatchQuery(
+        "/api/runs/" & runId & "/events",
+        {"after": "-1"}
+      )
+      check badCursor.response.code == 400
+      check parseJson(badCursor.response.body)["param"].getStr == "after"
+
+      let badLimitZero = dispatchQuery(
+        "/api/runs/" & runId & "/events",
+        {"limit": "0"}
+      )
+      check badLimitZero.response.code == 400
+
+      let badLimitText = dispatchQuery(
+        "/api/runs/" & runId & "/events",
+        {"limit": "abc"}
+      )
+      check badLimitText.response.code == 400
+      check parseJson(badLimitText.response.body)["param"].getStr == "limit"
+
+      # Page size is capped at the maximum.
+      let capped = dispatchQuery(
+        "/api/runs/" & runId & "/events",
+        {"limit": "100000"}
+      )
+      check capped.response.code == 200
+      check parseJson(capped.response.body)["events"].len == 3
+
+      # Unknown runs are not found.
+      let missing = dispatchQuery(
+        "/api/runs/missing-run/events",
+        {"after": "0"}
+      )
+      check missing.response.code == 404
+      check parseJson(missing.response.body)["run_id"].getStr == "missing-run"

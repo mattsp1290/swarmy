@@ -1,0 +1,47 @@
+{
+  "schema_version": "bead-swarm-history-v1",
+  "iteration": 13,
+  "branch": "bead-swarm/iteration-13-jazzy-server-scaffold",
+  "slug": "jazzy-server-scaffold",
+  "main_branch": "main",
+  "main_branch_source": "default",
+  "selected_beads": ["swarmy-zvh"],
+  "beads_done": ["swarmy-zvh"],
+  "beads_blocked": [],
+  "beads_partial": [],
+  "merge_target": "main",
+  "validation": [
+    "nimble test: pass",
+    "nimble build: pass",
+    "npm run build --workspace apps/web: pass",
+    "tests/smoke_serve.sh: pass",
+    "git diff --check main...HEAD: pass",
+    "JAZZY_SRC=/Users/punk1290/git/jazzy-framework/src nim c -r --path:src --hints:off --verbosity:0 tests/test_server_app.nim: pass",
+    "JAZZY_SRC=/Users/punk1290/git/jazzy-framework/src nim c -r --path:src --hints:off --verbosity:0 tests/test_cli_dispatch.nim: pass",
+    "JAZZY_SRC=/Users/punk1290/git/jazzy-framework/src nim check --path:src src/swarmy_cli/serve.nim: pass"
+  ],
+  "review_artifacts_local_only": true,
+  "review_blocker_summary": [
+    "jazzy-integration-review requested clean dependency resolution and fail-fast missing static build behavior; resolved with a pinned Jazzy Git dependency, explicit local JAZZY_SRC behavior, installed-package config path lookup, and static build validation",
+    "serve-boundary-review requested stable port-collision errors and consistent asset routing; resolved by catching startup failures, adding a binary serve smoke script, and always registering the assets static route"
+  ],
+  "reviews": [
+    {
+      "reviewer": "jazzy-integration-review",
+      "verdict": "APPROVE",
+      "artifact": "reviews/bead-swarm-iteration-13-jazzy-server-scaffold-2026-06-24/jazzy-integration-review/01-critical-and-important.md",
+      "latest_head_addendum": "reviews/bead-swarm-iteration-13-jazzy-server-scaffold-2026-06-24/jazzy-integration-review/05-addendum.md",
+      "critical_count": 1,
+      "important_count": 1
+    },
+    {
+      "reviewer": "serve-boundary-review",
+      "verdict": "APPROVE",
+      "artifact": "reviews/bead-swarm-iteration-13-jazzy-server-scaffold-2026-06-24/serve-boundary-review/01-critical-and-important.md",
+      "latest_head_addendum": "reviews/bead-swarm-iteration-13-jazzy-server-scaffold-2026-06-24/serve-boundary-review/05-addendum.md",
+      "critical_count": 0,
+      "important_count": 2
+    }
+  ],
+  "status": "complete"
+}

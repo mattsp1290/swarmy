@@ -3,10 +3,15 @@
   import {
     ApiError,
     fetchRunDetail,
+    fetchRunEvents,
     fetchRuns,
     hasStoredToken,
+    recentEventsCursor,
+    isBlockedEvent,
+    eventActor,
     type BeadSummary,
     type RunDetail,
+    type RunEvent,
     type RunSummary
   } from './api';
 
@@ -30,6 +35,9 @@
   let error = '';
   let authError = false;
   let detailRequest = 0;
+  let recentEvents: RunEvent[] = [];
+  let loadingEvents = false;
+  let eventsError = '';
 
   const repoName = (path: string) => {
     const normalized = path.replace(/\\/g, '/');
@@ -90,6 +98,11 @@
   const unassignedBeads = () =>
     selectedRun?.beads.filter((bead) => !stages.includes(stageFor(bead))) ?? [];
 
+  const blockedEvents = () => recentEvents.filter((event) => isBlockedEvent(event));
+
+  const hasFailures = () =>
+    (selectedRun?.errors?.length ?? 0) > 0 || blockedEvents().length > 0;
+
   const selectRun = async (runId: string) => {
     const requestId = detailRequest + 1;
     detailRequest = requestId;
@@ -98,6 +111,9 @@
     loadingDetail = true;
     error = '';
     authError = false;
+    recentEvents = [];
+    eventsError = '';
+    loadingEvents = true;
 
     try {
       const detail = await fetchRunDetail(runId);
@@ -112,6 +128,33 @@
     } finally {
       if (detailRequest === requestId) {
         loadingDetail = false;
+      }
+    }
+
+    // A timeline fetch failure must never blank the whole detail pane, so this
+    // runs after the detail is settled and only touches the events-scoped
+    // state. Skip entirely if the detail load did not succeed for this request.
+    if (detailRequest !== requestId || selectedRunId !== runId || !selectedRun) {
+      if (detailRequest === requestId) {
+        loadingEvents = false;
+      }
+      return;
+    }
+
+    try {
+      const after = recentEventsCursor(selectedRun.latest_seq, 50);
+      const page = await fetchRunEvents(runId, after);
+      if (detailRequest === requestId && selectedRunId === runId) {
+        recentEvents = page.events.slice().reverse();
+      }
+    } catch (caught) {
+      if (detailRequest === requestId && selectedRunId === runId) {
+        eventsError =
+          caught instanceof Error ? caught.message : 'Run events request failed';
+      }
+    } finally {
+      if (detailRequest === requestId) {
+        loadingEvents = false;
       }
     }
   };
@@ -339,6 +382,82 @@
               <article>
                 <strong>{agent.name}</strong>
                 <span>{agent.kind}</span>
+              </article>
+            {/each}
+          </div>
+        {/if}
+      </section>
+
+      <section class="detail-band" aria-label="Failures">
+        <header>
+          <h3>Failures</h3>
+          <span>{(selectedRun.errors?.length ?? 0) + blockedEvents().length}</span>
+        </header>
+        {#if !hasFailures()}
+          <div class="empty-row failures-empty">No failures</div>
+        {:else}
+          <div class="failure-list">
+            {#each selectedRun.errors ?? [] as runError}
+              <article class="failure-row">
+                <div class="failure-main">
+                  <strong>{runError.severity || 'error'}</strong>
+                  <span>{runError.message}</span>
+                </div>
+                <div class="failure-meta">
+                  <span>—</span>
+                  <small title={runError.occurred_at}>{relativeTime(runError.occurred_at)}</small>
+                </div>
+              </article>
+            {/each}
+            {#each blockedEvents() as event}
+              <article class="failure-row blocked-row">
+                <div class="failure-main">
+                  <strong>blocked</strong>
+                  <span>
+                    {event.bead_id ?? event.event_type}{event.stage ? ` · ${event.stage}` : ''}
+                  </span>
+                </div>
+                <div class="failure-meta">
+                  <span>{eventActor(event)}</span>
+                  <small title={event.occurred_at}>{relativeTime(event.occurred_at)}</small>
+                </div>
+              </article>
+            {/each}
+          </div>
+        {/if}
+      </section>
+
+      <section class="detail-band" aria-label="Activity">
+        <header>
+          <h3>Recent events</h3>
+          <span>{recentEvents.length}</span>
+        </header>
+        {#if loadingEvents}
+          <div class="empty-row">Loading activity</div>
+        {:else if eventsError}
+          <div class="events-error">
+            <small>{eventsError}</small>
+            <small class="events-error-note">
+              The run detail above is still current; only the activity timeline
+              failed to load.
+            </small>
+          </div>
+        {:else if recentEvents.length === 0}
+          <div class="empty-row">No recent activity</div>
+        {:else}
+          <div class="timeline-list">
+            {#each recentEvents as event}
+              <article class="timeline-row" class:blocked-row={isBlockedEvent(event)}>
+                <div class="timeline-main">
+                  <strong>{event.event_type}{event.stage ? ` · ${event.stage}` : ''}</strong>
+                  {#if event.bead_id}
+                    <span class="timeline-bead">{event.bead_id}</span>
+                  {/if}
+                  <span class="timeline-actor">{eventActor(event)}</span>
+                </div>
+                <small class="timeline-time" title={event.occurred_at}>
+                  {relativeTime(event.occurred_at)}
+                </small>
               </article>
             {/each}
           </div>

@@ -402,6 +402,93 @@ h1 {
   padding: 0.85rem;
 }
 
+.failure-list,
+.timeline-list {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.7rem;
+}
+
+.failure-row,
+.timeline-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+  border: 1px solid #c7d2d7;
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 0.7rem 0.75rem;
+}
+
+.failure-main,
+.timeline-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.failure-meta,
+.timeline-time {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.2rem;
+  text-align: right;
+  color: #4c5a60;
+}
+
+.failure-main span,
+.timeline-actor,
+.timeline-bead {
+  color: #4c5a60;
+}
+
+.timeline-bead {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.82em;
+}
+
+/* Blocked / failed rows get an amber-to-red accent matching .error-state. */
+.failure-row,
+.blocked-row {
+  border-color: #cc9b9b;
+  background: #fff7f5;
+  color: #70312b;
+}
+
+.failure-row .failure-meta,
+.blocked-row .timeline-time,
+.failure-row .failure-main span,
+.blocked-row .timeline-actor,
+.blocked-row .timeline-bead {
+  color: #8a4339;
+}
+
+.failures-empty {
+  border-style: dashed;
+  border-color: #b9c7cd;
+  background: #f8fafb;
+  color: inherit;
+}
+
+.events-error {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.7rem;
+  border: 1px solid #cc9b9b;
+  border-radius: 6px;
+  background: #fff7f5;
+  color: #70312b;
+  padding: 0.75rem;
+}
+
+.events-error-note {
+  color: #8a4339;
+}
+
 @media (max-width: 760px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -426,11 +513,19 @@ h1 {
     grid-template-columns: 1fr;
   }
 
-  .bead-row {
+  .bead-row,
+  .failure-row,
+  .timeline-row {
     grid-template-columns: 1fr;
   }
 
   .bead-meta {
     justify-content: flex-start;
+  }
+
+  .failure-meta,
+  .timeline-time {
+    align-items: flex-start;
+    text-align: left;
   }
 }

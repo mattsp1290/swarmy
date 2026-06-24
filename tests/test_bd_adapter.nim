@@ -159,3 +159,28 @@ suite "bd adapter":
         fail()
       except BdSnapshotError as error:
         check error.kind == bdMalformedOutput
+
+  test "read-only allowlist accepts only the exact snapshot-read shapes":
+    # The exact commands this adapter issues are permitted.
+    check isAllowedReadOnlyCommand(@["list", "--json"])
+    check isAllowedReadOnlyCommand(@["ready", "--json", "--limit", "100"])
+    check isAllowedReadOnlyCommand(@["show", "swarmy-3z4", "--json"])
+
+  test "read-only allowlist rejects mutating or unexpected commands":
+    let denied = @[
+      @["close", "swarmy-3z4"],
+      @["create", "New bead"],
+      @["update", "swarmy-3z4", "--status", "closed"],
+      @["delete", "swarmy-3z4", "--force"],
+      @["dep", "add", "a", "b"],
+      @["list"],                              # missing --json
+      @["list", "--json", "extra"],           # extra arg
+      @["ready", "--json"],                   # missing --limit value
+      @["ready", "--json", "--limit"],        # arity mismatch
+      @["show", "swarmy-3z4"],                # missing --json
+      @["show", "--json", "swarmy-3z4"],      # --json not in trailing slot
+      @["bd", "list", "--json"],              # smuggled bd prefix
+      newSeq[string](),                       # empty
+    ]
+    for args in denied:
+      check not isAllowedReadOnlyCommand(args)

@@ -22,7 +22,7 @@ for arg in "$@"; do
   case "${arg}" in
     --skip-build) SKIP_BUILD=1 ;;
     -h|--help)
-      grep '^#' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      grep '^#' "${BASH_SOURCE[0]}" | grep -v '^#!' | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)

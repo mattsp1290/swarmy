@@ -14,18 +14,25 @@ type ServeOptions* = object
   port*: int
   staticDir*: string
   repo*: string
+  authToken*: string
+  maxBodyBytes*: int
 
 proc defaultServeOptions*(): ServeOptions =
   ServeOptions(
     host: DefaultHost,
     port: DefaultPort,
     staticDir: DefaultStaticDir,
-    repo: "."
+    repo: ".",
+    authToken: getEnv("SWARMY_AUTH_TOKEN"),
+    maxBodyBytes: 1024 * 1024
   )
 
 proc preview*(options: ServeOptions): string =
-  "swarmy serve: http://" & options.host & ":" & $options.port &
-    " static " & options.staticDir & "\n"
+  result = "swarmy serve: http://" & options.host & ":" & $options.port &
+    " static " & options.staticDir
+  if options.authToken.len > 0:
+    result.add(" auth required")
+  result.add("\n")
 
 proc validateStaticDir*(staticDir: string): tuple[ok: bool, error: string] =
   let indexPath = staticDir / "index.html"
@@ -45,6 +52,27 @@ proc parsePort(raw: string): tuple[ok: bool, value: int, error: string] =
     (true, port, "")
   except ValueError:
     (false, 0, "swarmy serve: --port must be an integer\n")
+
+proc parseMaxBodyBytes(raw: string): tuple[ok: bool, value: int, error: string] =
+  try:
+    let maxBytes = parseInt(raw)
+    if maxBytes < 0:
+      return (
+        false,
+        0,
+        "swarmy serve: --max-body-bytes must be zero or greater\n"
+      )
+    (true, maxBytes, "")
+  except ValueError:
+    (false, 0, "swarmy serve: --max-body-bytes must be an integer\n")
+
+proc validateBindAuth*(options: ServeOptions): tuple[ok: bool, error: string] =
+  if options.authToken.len == 0 and not server_app.isLoopbackBindAddress(options.host):
+    return (
+      false,
+      "swarmy serve: --auth-token or SWARMY_AUTH_TOKEN is required when binding outside loopback\n"
+    )
+  (true, "")
 
 proc parseServeArgs*(args: seq[string]): tuple[
   ok: bool,
@@ -84,6 +112,25 @@ proc parseServeArgs*(args: seq[string]): tuple[
         return (false, result.options, "swarmy serve: --repo requires a path\n")
       result.options.repo = args[i + 1]
       i += 2
+    of "--auth-token":
+      if i + 1 >= args.len or args[i + 1].startsWith("-"):
+        return (false, result.options, "swarmy serve: --auth-token requires a value\n")
+      if args[i + 1].len == 0:
+        return (false, result.options, "swarmy serve: --auth-token requires a value\n")
+      result.options.authToken = args[i + 1]
+      i += 2
+    of "--max-body-bytes":
+      if i + 1 >= args.len or args[i + 1].startsWith("-"):
+        return (
+          false,
+          result.options,
+          "swarmy serve: --max-body-bytes requires a value\n"
+        )
+      let parsed = parseMaxBodyBytes(args[i + 1])
+      if not parsed.ok:
+        return (false, result.options, parsed.error)
+      result.options.maxBodyBytes = parsed.value
+      i += 2
     else:
       return (
         false,
@@ -95,6 +142,9 @@ proc run*(args: seq[string]): CliResult =
   let parsed = parseServeArgs(args)
   if not parsed.ok:
     return CliResult(exitCode: 2, error: parsed.error)
+  let bindAuth = validateBindAuth(parsed.options)
+  if not bindAuth.ok:
+    return CliResult(exitCode: 2, error: bindAuth.error)
 
   CliResult(exitCode: 0, output: parsed.options.preview)
 
@@ -102,6 +152,9 @@ proc serveBlocking*(args: seq[string]): CliResult =
   let parsed = parseServeArgs(args)
   if not parsed.ok:
     return CliResult(exitCode: 2, error: parsed.error)
+  let bindAuth = validateBindAuth(parsed.options)
+  if not bindAuth.ok:
+    return CliResult(exitCode: 2, error: bindAuth.error)
 
   let staticCheck = validateStaticDir(parsed.options.staticDir)
   if not staticCheck.ok:
@@ -114,7 +167,9 @@ proc serveBlocking*(args: seq[string]): CliResult =
       address: parsed.options.host,
       port: parsed.options.port,
       staticDir: parsed.options.staticDir,
-      repoPath: parsed.options.repo
+      repoPath: parsed.options.repo,
+      authToken: parsed.options.authToken,
+      maxBodyBytes: parsed.options.maxBodyBytes
     ))
   except CatchableError as err:
     return CliResult(

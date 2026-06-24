@@ -59,9 +59,58 @@ export type RunDetail = RunSummary & {
   errors?: RunError[];
 };
 
+const authTokenStorageKey = 'swarmy.authToken';
+
+function readBrowserToken(): string {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+
+  const hash = window.location.hash.startsWith('#')
+    ? window.location.hash.slice(1)
+    : window.location.hash;
+  const hashParams = new URLSearchParams(hash);
+  const suppliedToken = hashParams.get('swarmy_token');
+  if (suppliedToken !== null) {
+    try {
+      if (suppliedToken.length > 0) {
+        window.localStorage.setItem(authTokenStorageKey, suppliedToken);
+      } else {
+        window.localStorage.removeItem(authTokenStorageKey);
+      }
+    } catch {
+      // localStorage can be unavailable in restricted browser contexts.
+    }
+
+    hashParams.delete('swarmy_token');
+    const nextHash = hashParams.toString();
+    const nextUrl =
+      window.location.pathname +
+      window.location.search +
+      (nextHash.length > 0 ? `#${nextHash}` : '');
+    window.history.replaceState(null, '', nextUrl);
+    return suppliedToken;
+  }
+
+  try {
+    return window.localStorage.getItem(authTokenStorageKey) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function jsonHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { accept: 'application/json' };
+  const token = readBrowserToken();
+  if (token.length > 0) {
+    headers['X-Swarmy-Token'] = token;
+  }
+  return headers;
+}
+
 export async function fetchRuns(): Promise<RunSummary[]> {
   const response = await fetch('/api/runs', {
-    headers: { accept: 'application/json' }
+    headers: jsonHeaders()
   });
   if (!response.ok) {
     throw new Error(`Run list request failed: ${response.status}`);
@@ -73,7 +122,7 @@ export async function fetchRuns(): Promise<RunSummary[]> {
 
 export async function fetchRunDetail(runId: string): Promise<RunDetail> {
   const response = await fetch(`/api/runs/${encodeURIComponent(runId)}`, {
-    headers: { accept: 'application/json' }
+    headers: jsonHeaders()
   });
   if (!response.ok) {
     throw new Error(`Run detail request failed: ${response.status}`);

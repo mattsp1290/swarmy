@@ -1,0 +1,46 @@
+{
+  "schema_version": "bead-swarm-history-v1",
+  "iteration": 3,
+  "branch": "bead-swarm/iteration-3-implement-swarmy-run-init",
+  "slug": "implement-swarmy-run-init",
+  "main_branch": "main",
+  "main_branch_source": "default",
+  "selected_beads": ["swarmy-djn"],
+  "beads_done": ["swarmy-djn"],
+  "beads_blocked": [],
+  "beads_partial": [],
+  "merge_target": "main",
+  "validation": [
+    "nimble test: pass",
+    "nimble build: pass",
+    "./swarmy init --repo <tmp> twice with run.json check: pass",
+    "npm ci: pass",
+    "npm run build --workspace apps/web: pass",
+    "npm run build: pass",
+    "nimble buildAll: pass",
+    "git diff --check: pass",
+    "nim check --path:src src/swarmy.nim: pass",
+    "nim check --path:src tests/test_run_metadata.nim: pass"
+  ],
+  "review_artifacts_local_only": true,
+  "review_blocker_summary": [],
+  "reviews": [
+    {
+      "reviewer": "run-metadata-safety",
+      "verdict": "APPROVE",
+      "artifact": "reviews/bead-swarm-iteration-3-implement-swarmy-run-init-2026-06-24/run-metadata-safety/00-overview.md",
+      "latest_head_addendum": "reviews/bead-swarm-iteration-3-implement-swarmy-run-init-2026-06-24/run-metadata-safety/05-addendum-latest-head.md",
+      "critical_count": 0,
+      "important_count": 0
+    },
+    {
+      "reviewer": "init-cli-contract",
+      "verdict": "APPROVE",
+      "artifact": "reviews/bead-swarm-iteration-3-implement-swarmy-run-init-2026-06-24/init-cli-contract/00-overview.md",
+      "latest_head_addendum": "reviews/bead-swarm-iteration-3-implement-swarmy-run-init-2026-06-24/init-cli-contract/06-addendum-final.md",
+      "critical_count": 0,
+      "important_count": 0
+    }
+  ],
+  "status": "complete"
+}

@@ -151,7 +151,9 @@
       const after = recentEventsCursor(selectedRun.latest_seq, RECENT_EVENTS_CAP);
       const page = await fetchRunEvents(runId, after);
       if (detailRequest === requestId && selectedRunId === runId) {
-        recentEvents = page.events.slice().reverse();
+        // Reuse the merge helper so the initial list is capped and ordered
+        // identically to the polled updates.
+        recentEvents = mergeRecentEvents([], page.events, RECENT_EVENTS_CAP);
         eventsCursor = page.latest_seq;
       }
     } catch (caught) {

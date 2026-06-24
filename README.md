@@ -11,6 +11,7 @@ polling activity timeline.
 - [`AGENTS.md`](AGENTS.md) — how agents record bead-swarm state (CLI + MCP).
 - [`docs/RUNBOOK.md`](docs/RUNBOOK.md) — operating Swarmy and recovery.
 - [`docs/RELEASING.md`](docs/RELEASING.md) — CI gates and release packaging.
+- [`docs/ECOSYSTEM.md`](docs/ECOSYSTEM.md) — upstream Nim ecosystem requests and fallbacks.
 - [`docs/mcp-v1.md`](docs/mcp-v1.md) — MCP surface reference.
 
 ## Build and run locally

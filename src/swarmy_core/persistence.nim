@@ -194,8 +194,8 @@ proc ensureParentDir(path: string) =
 proc openStore*(path: string): Store =
   ensureParentDir(path)
   let db = openDatabase(path)
-  db.exec("PRAGMA journal_mode=WAL")
   db.exec("PRAGMA busy_timeout = " & $DefaultBusyTimeoutMs)
+  db.exec("PRAGMA journal_mode=WAL")
   db.exec("PRAGMA foreign_keys=ON")
   Store(path: path, db: db)
 

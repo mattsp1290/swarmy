@@ -68,7 +68,10 @@ proc classifyFailure(command: seq[string], output: string, exitCode: int): BdSna
   else:
     newBdError(bdCommandFailed, command, output, exitCode)
 
-proc isAllowedReadOnlyCommand(args: seq[string]): bool =
+proc isAllowedReadOnlyCommand*(args: seq[string]): bool =
+  ## Read-only allowlist enforced before any bd subprocess is spawned. Only the
+  ## exact snapshot-read shapes this adapter issues are permitted; anything that
+  ## could mutate Beads state (or any unexpected shape) is rejected.
   if args == @["list", "--json"]:
     return true
   if args.len == 4 and args[0] == "ready" and args[1] == "--json" and args[2] == "--limit":

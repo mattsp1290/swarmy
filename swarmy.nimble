@@ -16,4 +16,3 @@ requires "nim >= 2.2.4"
 task buildAll, "Build the Nim backend and Svelte frontend":
   exec "nimble build"
   exec "npm run build --workspace apps/web"
-

@@ -109,8 +109,15 @@ proc readRunMetadata*(path: string): RunMetadata =
 proc writeRunMetadata*(path: string, metadata: RunMetadata) =
   writeFile(path, metadata.toJson.pretty & "\n")
 
+proc writeRunMetadataAtomically(path: string, metadata: RunMetadata) =
+  let tempPath = path & ".tmp-" & newRunId()
+  writeRunMetadata(tempPath, metadata)
+  moveFile(tempPath, path)
+
 proc acquireInitLock(lockPath: string): cint =
   for _ in 0 ..< 500:
+    if symlinkExists(lockPath):
+      raise newException(ValueError, "init lock must not be a symlink: " & lockPath)
     let fd = posix.open(lockPath.cstring, O_CREAT or O_EXCL or O_WRONLY, Mode(0o600))
     if fd >= 0:
       return fd
@@ -131,11 +138,6 @@ proc initRun*(repoPath: string, dbPath: Option[string] = none(string)): InitResu
   discard ensureSafeSwarmyDir(canonical)
 
   let path = metadataPath(canonical)
-  assertSafeMetadataFile(path)
-  if fileExists(path):
-    let existing = readRunMetadata(path)
-    return InitResult(metadata: existing, metadataPath: path, created: false)
-
   let lockPath = initLockPath(canonical)
   let lockFile = acquireInitLock(lockPath)
   try:
@@ -145,7 +147,7 @@ proc initRun*(repoPath: string, dbPath: Option[string] = none(string)): InitResu
       return InitResult(metadata: existing, metadataPath: path, created: false)
 
     let metadata = newRunMetadata(canonical, dbPath)
-    writeRunMetadata(path, metadata)
+    writeRunMetadataAtomically(path, metadata)
     InitResult(metadata: metadata, metadataPath: path, created: true)
   finally:
     releaseInitLock(lockPath, lockFile)

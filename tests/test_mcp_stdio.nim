@@ -3,6 +3,7 @@ import std/[json, options, os, sequtils, strutils, times, unittest]
 import tiny_sqlite
 
 import swarmy_cli/mcp_stdio
+import swarmy_core/guidance
 import swarmy_core/persistence
 
 proc withTempRepo(body: proc(repo, dbPath: string)) =
@@ -53,6 +54,27 @@ suite "mcp stdio":
       "swarmy_stage",
       "swarmy_snapshot"
     ]
+
+    check initialized["result"]["capabilities"].hasKey("resources")
+    check initialized["result"]["capabilities"].hasKey("prompts")
+
+  test "bead-swarm guidance is exposed as MCP resource and prompt":
+    let resources = response(request(1, "resources/list"))
+    check resources["result"]["resources"][0]["uri"].getStr == "/bead-swarm"
+
+    let resource = response(request(2, "resources/read", %*{
+      "uri": "/bead-swarm"
+    }))
+    check resource["result"]["contents"][0]["text"].getStr == BeadSwarmGuidance
+
+    let prompts = response(request(3, "prompts/list"))
+    check prompts["result"]["prompts"][0]["name"].getStr == "bead-swarm"
+
+    let prompt = response(request(4, "prompts/get", %*{
+      "name": "bead-swarm"
+    }))
+    check prompt["result"]["messages"][0]["content"]["text"].getStr ==
+      BeadSwarmGuidance
 
   test "tool calls initialize runs, write events, and fetch snapshots":
     withTempRepo proc(repo, dbPath: string) =

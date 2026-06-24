@@ -4,7 +4,7 @@ import tiny_sqlite
 
 import swarmy_cli/event_commands
 import swarmy_cli/init as init_command
-import swarmy_core/[app, events, persistence, run_metadata]
+import swarmy_core/[app, events, guidance, persistence, run_metadata]
 
 const
   McpProtocolVersion* = "2025-06-18"
@@ -256,6 +256,58 @@ proc toolsList(): JsonNode =
     ]
   }
 
+proc resourcesList(): JsonNode =
+  %*{
+    "resources": [
+      {
+        "uri": "/bead-swarm",
+        "name": "bead-swarm",
+        "description": "Swarmy bead-swarm workflow guidance",
+        "mimeType": "text/markdown"
+      }
+    ]
+  }
+
+proc resourceRead(uri: string): Option[JsonNode] =
+  if uri != "/bead-swarm":
+    return none(JsonNode)
+  some(%*{
+    "contents": [
+      {
+        "uri": "/bead-swarm",
+        "mimeType": "text/markdown",
+        "text": BeadSwarmGuidance
+      }
+    ]
+  })
+
+proc promptsList(): JsonNode =
+  %*{
+    "prompts": [
+      {
+        "name": "bead-swarm",
+        "description": "Instructions for agents recording bead-swarm progress",
+        "arguments": []
+      }
+    ]
+  }
+
+proc promptGet(name: string): Option[JsonNode] =
+  if name != "bead-swarm":
+    return none(JsonNode)
+  some(%*{
+    "description": "Instructions for agents recording bead-swarm progress",
+    "messages": [
+      {
+        "role": "user",
+        "content": {
+          "type": "text",
+          "text": BeadSwarmGuidance
+        }
+      }
+    ]
+  })
+
 proc knownTool(name: string): bool =
   case name
   of "swarmy_init", "swarmy_agent", "swarmy_stage", "swarmy_snapshot":
@@ -289,7 +341,11 @@ proc handleMcpLine*(line: string): Option[string] =
       some(rpcResult(id, %*{
         "protocolVersion": McpProtocolVersion,
         "serverInfo": {"name": Name, "version": Version},
-        "capabilities": {"tools": {"listChanged": false}}
+        "capabilities": {
+          "tools": {"listChanged": false},
+          "resources": {"listChanged": false},
+          "prompts": {"listChanged": false}
+        }
       }))
     of "tools/list":
       some(rpcResult(id, toolsList()))
@@ -302,6 +358,26 @@ proc handleMcpLine*(line: string): Option[string] =
       if not knownTool(name):
         return some(rpcError(id, -32602, "unknown tool: " & name))
       some(rpcResult(id, callTool(name, args)))
+    of "resources/list":
+      some(rpcResult(id, resourcesList()))
+    of "resources/read":
+      let params = request{"params"}
+      if params.kind != JObject:
+        return some(rpcError(id, -32602, "resources/read requires params"))
+      let found = resourceRead(params.stringArg("uri"))
+      if found.isNone:
+        return some(rpcError(id, -32602, "unknown resource: " & params.stringArg("uri")))
+      some(rpcResult(id, found.get))
+    of "prompts/list":
+      some(rpcResult(id, promptsList()))
+    of "prompts/get":
+      let params = request{"params"}
+      if params.kind != JObject:
+        return some(rpcError(id, -32602, "prompts/get requires params"))
+      let found = promptGet(params.stringArg("name"))
+      if found.isNone:
+        return some(rpcError(id, -32602, "unknown prompt: " & params.stringArg("name")))
+      some(rpcResult(id, found.get))
     else:
       if request.hasKey("id"):
         some(rpcError(id, -32601, "method not found: " & methodName))

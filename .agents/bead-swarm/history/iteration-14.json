@@ -1,0 +1,46 @@
+{
+  "schema_version": "bead-swarm-history-v1",
+  "iteration": 14,
+  "branch": "bead-swarm/iteration-14-run-list-endpoints",
+  "slug": "run-list-endpoints",
+  "main_branch": "main",
+  "main_branch_source": "default",
+  "selected_beads": ["swarmy-4nu"],
+  "beads_done": ["swarmy-4nu"],
+  "beads_blocked": [],
+  "beads_partial": [],
+  "merge_target": "main",
+  "validation": [
+    "nimble test: pass",
+    "nimble build: pass",
+    "npm run build --workspace apps/web: pass",
+    "tests/smoke_serve.sh: pass",
+    "git diff --check main...HEAD: pass",
+    "JAZZY_SRC=/Users/punk1290/git/jazzy-framework/src nim c -r --path:src --hints:off --verbosity:0 tests/test_server_app.nim: pass",
+    "JAZZY_SRC=/Users/punk1290/git/jazzy-framework/src nim check --path:src src/swarmy_server/app.nim: pass"
+  ],
+  "review_artifacts_local_only": true,
+  "review_blocker_summary": [
+    "api-scope-review requested event-derived recency for /api/runs; resolved with latest_event_at in list/detail summaries and ordering by latest activity",
+    "server-query-review requested pre-aggregated run counts and no per-request schema initialization; resolved with CTE count summaries and read-only GET store opening"
+  ],
+  "reviews": [
+    {
+      "reviewer": "api-scope-review",
+      "verdict": "APPROVE",
+      "artifact": "reviews/bead-swarm-iteration-14-run-list-endpoints-2026-06-24/api-scope-review/01-critical-and-important.md",
+      "latest_head_addendum": "reviews/bead-swarm-iteration-14-run-list-endpoints-2026-06-24/api-scope-review/05-addendum.md",
+      "critical_count": 0,
+      "important_count": 1
+    },
+    {
+      "reviewer": "server-query-review",
+      "verdict": "APPROVE",
+      "artifact": "reviews/bead-swarm-iteration-14-run-list-endpoints-2026-06-24/server-query-review/01-critical-and-important.md",
+      "latest_head_addendum": "reviews/bead-swarm-iteration-14-run-list-endpoints-2026-06-24/server-query-review/05-addendum.md",
+      "critical_count": 0,
+      "important_count": 2
+    }
+  ],
+  "status": "complete"
+}

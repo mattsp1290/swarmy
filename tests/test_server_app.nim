@@ -3,6 +3,7 @@ import std/[asyncdispatch, httpcore, json, os, times, unittest]
 import jazzy
 
 import swarmy_core/app
+import swarmy_cli/serve
 import swarmy_server/app as server_app
 
 proc withTempDist(body: proc(dir: string)) =
@@ -12,6 +13,15 @@ proc withTempDist(body: proc(dir: string)) =
   createDir(dir / "assets")
   writeFile(dir / "index.html", "<!doctype html><title>Swarmy</title>")
   writeFile(dir / "assets" / "app.js", "console.log('swarmy');")
+  try:
+    body(dir)
+  finally:
+    removeDir(dir)
+
+proc withEmptyTempDir(body: proc(dir: string)) =
+  let dir = getTempDir() / "swarmy-server-empty-test-" & $getCurrentProcessId() &
+    "-" & $epochTime().int
+  createDir(dir)
   try:
     body(dir)
   finally:
@@ -27,6 +37,19 @@ proc dispatchGet(path: string): Context =
   waitFor dispatch(result)
 
 suite "server app":
+  test "blocking serve fails fast when web build is missing":
+    withEmptyTempDir proc(dir: string) =
+      let result = serveBlocking(@[
+        "--host", "127.0.0.1",
+        "--port", "18081",
+        "--static-dir", dir
+      ])
+
+      check result.exitCode == 1
+      check result.output == ""
+      check "web app build not found" in result.error
+      check "npm run build --workspace apps/web" in result.error
+
   test "registers health and static app routes":
     withTempDist proc(dist: string) =
       server_app.registerRoutes(dist)

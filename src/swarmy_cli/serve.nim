@@ -25,6 +25,16 @@ proc preview*(options: ServeOptions): string =
   "swarmy serve: http://" & options.host & ":" & $options.port &
     " static " & options.staticDir & "\n"
 
+proc validateStaticDir*(staticDir: string): tuple[ok: bool, error: string] =
+  let indexPath = staticDir / "index.html"
+  if not fileExists(indexPath):
+    return (
+      false,
+      "swarmy serve: web app build not found at " & indexPath &
+        " (run `npm run build --workspace apps/web` or pass --static-dir)\n"
+    )
+  (true, "")
+
 proc parsePort(raw: string): tuple[ok: bool, value: int, error: string] =
   try:
     let port = parseInt(raw)
@@ -46,6 +56,8 @@ proc parseServeArgs*(args: seq[string]): tuple[
     of "--host":
       if i + 1 >= args.len or args[i + 1].startsWith("-"):
         return (false, result.options, "swarmy serve: --host requires a value\n")
+      if args[i + 1].len == 0:
+        return (false, result.options, "swarmy serve: --host requires a value\n")
       result.options.host = args[i + 1]
       i += 2
     of "--port":
@@ -58,6 +70,8 @@ proc parseServeArgs*(args: seq[string]): tuple[
       i += 2
     of "--static-dir":
       if i + 1 >= args.len or args[i + 1].startsWith("-"):
+        return (false, result.options, "swarmy serve: --static-dir requires a value\n")
+      if args[i + 1].len == 0:
         return (false, result.options, "swarmy serve: --static-dir requires a value\n")
       result.options.staticDir = args[i + 1]
       i += 2
@@ -80,11 +94,22 @@ proc serveBlocking*(args: seq[string]): CliResult =
   if not parsed.ok:
     return CliResult(exitCode: 2, error: parsed.error)
 
-  stdout.write(parsed.options.preview)
-  stdout.flushFile()
-  server_app.serve(ServerConfig(
-    address: parsed.options.host,
-    port: parsed.options.port,
-    staticDir: parsed.options.staticDir
-  ))
+  let staticCheck = validateStaticDir(parsed.options.staticDir)
+  if not staticCheck.ok:
+    return CliResult(exitCode: 1, error: staticCheck.error)
+
+  try:
+    stdout.write(parsed.options.preview)
+    stdout.flushFile()
+    server_app.serve(ServerConfig(
+      address: parsed.options.host,
+      port: parsed.options.port,
+      staticDir: parsed.options.staticDir
+    ))
+  except CatchableError as err:
+    return CliResult(
+      exitCode: 1,
+      error: "swarmy serve: failed to start http://" & parsed.options.host &
+        ":" & $parsed.options.port & ": " & err.msg & "\n"
+    )
   CliResult(exitCode: 0)

@@ -60,6 +60,19 @@ suite "cli dispatch":
     check result.output == ""
     check "--port must be between 1 and 65535" in result.error
 
+  test "serve command validates option values":
+    let missingHost = run(@["serve", "--host"])
+    check missingHost.exitCode == 2
+    check "--host requires a value" in missingHost.error
+
+    let emptyStatic = run(@["serve", "--static-dir", ""])
+    check emptyStatic.exitCode == 2
+    check "--static-dir requires a value" in emptyStatic.error
+
+    let invalidPort = run(@["serve", "--port", "not-a-port"])
+    check invalidPort.exitCode == 2
+    check "--port must be an integer" in invalidPort.error
+
   test "init validates arguments before reaching metadata writes":
     let result = run(@["init", "--repo"])
 

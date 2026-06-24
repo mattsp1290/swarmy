@@ -38,10 +38,7 @@ proc registerRoutes*(staticDir: string) =
   setStaticRoot(staticDir)
   Route.get("/api/health", health)
   Route.get("/", appIndex)
-
-  let assetsDir = currentStaticRoot() / "assets"
-  if dirExists(assetsDir):
-    Route.staticRoute(assetsDir, "/assets")
+  Route.staticRoute(currentStaticRoot() / "assets", "/assets")
 
 proc serve*(config: ServerConfig) =
   registerRoutes(config.staticDir)

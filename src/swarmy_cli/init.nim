@@ -1,4 +1,4 @@
-import std/options
+import std/[options, strutils]
 
 import swarmy_cli/dispatch_types
 import swarmy_core/run_metadata
@@ -8,6 +8,11 @@ type
     repo: string
     db: Option[string]
 
+proc requireValue(args: seq[string], i: int, flag: string): tuple[ok: bool, value: string, error: string] =
+  if i + 1 >= args.len or args[i + 1].startsWith("--"):
+    return (false, "", "swarmy init: " & flag & " requires a path\n")
+  (true, args[i + 1], "")
+
 proc parseArgs(args: seq[string]): tuple[ok: bool, options: InitOptions, error: string] =
   result.options.repo = "."
 
@@ -15,14 +20,16 @@ proc parseArgs(args: seq[string]): tuple[ok: bool, options: InitOptions, error: 
   while i < args.len:
     case args[i]
     of "--repo":
-      if i + 1 >= args.len:
-        return (false, result.options, "swarmy init: --repo requires a path\n")
-      result.options.repo = args[i + 1]
+      let value = requireValue(args, i, "--repo")
+      if not value.ok:
+        return (false, result.options, value.error)
+      result.options.repo = value.value
       i += 2
     of "--db":
-      if i + 1 >= args.len:
-        return (false, result.options, "swarmy init: --db requires a path\n")
-      result.options.db = some(args[i + 1])
+      let value = requireValue(args, i, "--db")
+      if not value.ok:
+        return (false, result.options, value.error)
+      result.options.db = some(value.value)
       i += 2
     else:
       return (false, result.options, "swarmy init: unexpected argument '" & args[i] & "'\n")

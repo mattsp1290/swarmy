@@ -1,9 +1,11 @@
-import std/[json, options, os, random, strformat, times]
+import std/[json, options, os, posix, random, strformat, times]
 
 const
   RunMetadataSchemaVersion* = 1
   SwarmyDirName* = ".swarmy"
   MetadataFileName* = "run.json"
+  ConfigFileName* = "config.json"
+  InitLockFileName* = "init.lock"
 
 type
   RunMetadata* = object
@@ -12,6 +14,7 @@ type
     repoPath*: string
     createdAt*: string
     dbPath*: string
+    configPath*: string
 
   InitResult* = object
     metadata*: RunMetadata
@@ -21,11 +24,17 @@ type
 proc defaultDbPath*(repoPath: string): string =
   repoPath / SwarmyDirName / "swarmy.db"
 
+proc defaultConfigPath*(repoPath: string): string =
+  repoPath / SwarmyDirName / ConfigFileName
+
 proc metadataPath*(repoPath: string): string =
   repoPath / SwarmyDirName / MetadataFileName
 
+proc initLockPath(repoPath: string): string =
+  repoPath / SwarmyDirName / InitLockFileName
+
 proc canonicalRepoPath*(repoPath: string): string =
-  let absolute = absolutePath(repoPath)
+  let absolute = expandFilename(absolutePath(repoPath))
   if not dirExists(absolute):
     raise newException(ValueError, "repo path does not exist: " & repoPath)
   normalizedPath(absolute)
@@ -39,6 +48,22 @@ proc ensureSafeSwarmyDir(repoPath: string): string =
   if not dirExists(swarmyDir):
     createDir(swarmyDir)
   swarmyDir
+
+proc assertSafeMetadataFile(path: string) =
+  if symlinkExists(path):
+    raise newException(ValueError, "metadata file must not be a symlink: " & path)
+  if dirExists(path):
+    raise newException(ValueError, "metadata path is a directory: " & path)
+
+proc canonicalDbPath(repoPath: string, dbPath: Option[string]): string =
+  if dbPath.isNone:
+    return defaultDbPath(repoPath)
+
+  let raw = dbPath.get
+  if raw.isAbsolute:
+    normalizedPath(raw)
+  else:
+    normalizedPath(absolutePath(raw, repoPath))
 
 proc newRunId*(): string =
   randomize()
@@ -54,7 +79,8 @@ proc newRunMetadata*(repoPath: string, dbPath: Option[string] = none(string)): R
     runId: newRunId(),
     repoPath: canonical,
     createdAt: now().utc.format("yyyy-MM-dd'T'HH:mm:ss'Z'"),
-    dbPath: dbPath.get(defaultDbPath(canonical))
+    dbPath: canonicalDbPath(canonical, dbPath),
+    configPath: defaultConfigPath(canonical)
   )
 
 proc toJson*(metadata: RunMetadata): JsonNode =
@@ -63,7 +89,8 @@ proc toJson*(metadata: RunMetadata): JsonNode =
     "run_id": metadata.runId,
     "repo_path": metadata.repoPath,
     "created_at": metadata.createdAt,
-    "db_path": metadata.dbPath
+    "db_path": metadata.dbPath,
+    "config_path": metadata.configPath
   }
 
 proc fromJson*(node: JsonNode): RunMetadata =
@@ -72,7 +99,8 @@ proc fromJson*(node: JsonNode): RunMetadata =
     runId: node["run_id"].getStr,
     repoPath: node["repo_path"].getStr,
     createdAt: node["created_at"].getStr,
-    dbPath: node["db_path"].getStr
+    dbPath: node["db_path"].getStr,
+    configPath: node["config_path"].getStr
   )
 
 proc readRunMetadata*(path: string): RunMetadata =
@@ -81,15 +109,43 @@ proc readRunMetadata*(path: string): RunMetadata =
 proc writeRunMetadata*(path: string, metadata: RunMetadata) =
   writeFile(path, metadata.toJson.pretty & "\n")
 
+proc acquireInitLock(lockPath: string): cint =
+  for _ in 0 ..< 500:
+    let fd = posix.open(lockPath.cstring, O_CREAT or O_EXCL or O_WRONLY, Mode(0o600))
+    if fd >= 0:
+      return fd
+    if fileExists(lockPath):
+      sleep(10)
+    else:
+      raise newException(IOError, "cannot create init lock: " & lockPath)
+
+  raise newException(IOError, "timed out waiting for init lock: " & lockPath)
+
+proc releaseInitLock(lockPath: string, lockFd: cint) =
+  discard posix.close(lockFd)
+  if fileExists(lockPath):
+    removeFile(lockPath)
+
 proc initRun*(repoPath: string, dbPath: Option[string] = none(string)): InitResult =
   let canonical = canonicalRepoPath(repoPath)
   discard ensureSafeSwarmyDir(canonical)
 
   let path = metadataPath(canonical)
+  assertSafeMetadataFile(path)
   if fileExists(path):
     let existing = readRunMetadata(path)
     return InitResult(metadata: existing, metadataPath: path, created: false)
 
-  let metadata = newRunMetadata(canonical, dbPath)
-  writeRunMetadata(path, metadata)
-  InitResult(metadata: metadata, metadataPath: path, created: true)
+  let lockPath = initLockPath(canonical)
+  let lockFile = acquireInitLock(lockPath)
+  try:
+    assertSafeMetadataFile(path)
+    if fileExists(path):
+      let existing = readRunMetadata(path)
+      return InitResult(metadata: existing, metadataPath: path, created: false)
+
+    let metadata = newRunMetadata(canonical, dbPath)
+    writeRunMetadata(path, metadata)
+    InitResult(metadata: metadata, metadataPath: path, created: true)
+  finally:
+    releaseInitLock(lockPath, lockFile)

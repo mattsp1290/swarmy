@@ -19,11 +19,13 @@ suite "run metadata":
       check fileExists(repo / ".swarmy" / "run.json")
       check initialized.metadata.schemaVersion == 1
       check initialized.metadata.runId.startsWith("run-")
-      check initialized.metadata.repoPath == normalizedPath(absolutePath(repo))
-      check initialized.metadata.dbPath == normalizedPath(absolutePath(repo)) / ".swarmy" / "swarmy.db"
+      check initialized.metadata.repoPath == canonicalRepoPath(repo)
+      check initialized.metadata.dbPath == canonicalRepoPath(repo) / ".swarmy" / "swarmy.db"
+      check initialized.metadata.configPath == canonicalRepoPath(repo) / ".swarmy" / "config.json"
 
       let node = parseFile(repo / ".swarmy" / "run.json")
       check node["run_id"].getStr == initialized.metadata.runId
+      check node["config_path"].getStr == initialized.metadata.configPath
 
   test "init is idempotent":
     withTempRepo proc(repo: string) =
@@ -41,6 +43,12 @@ suite "run metadata":
 
       check initialized.metadata.dbPath == "/tmp/swarmy.db"
 
+  test "relative custom db path is resolved under the repo":
+    withTempRepo proc(repo: string) =
+      let initialized = initRun(repo, some("state/swarmy.db"))
+
+      check initialized.metadata.dbPath == canonicalRepoPath(repo) / "state" / "swarmy.db"
+
   test "symlinked metadata directory is rejected":
     withTempRepo proc(repo: string) =
       when defined(windows):
@@ -54,3 +62,34 @@ suite "run metadata":
             discard initRun(repo)
         finally:
           removeDir(target)
+
+  test "symlinked repo path resolves to the real path":
+    when defined(windows):
+      skip()
+    else:
+      withTempRepo proc(repo: string) =
+        let link = getTempDir() / "swarmy-repo-link-" & $getCurrentProcessId()
+        try:
+          createSymlink(repo, link)
+          let initialized = initRun(link)
+
+          check initialized.metadata.repoPath == canonicalRepoPath(repo)
+          check fileExists(repo / ".swarmy" / "run.json")
+        finally:
+          if symlinkExists(link):
+            removeFile(link)
+
+  test "symlinked metadata file is rejected":
+    withTempRepo proc(repo: string) =
+      when defined(windows):
+        skip()
+      else:
+        createDir(repo / ".swarmy")
+        let target = getTempDir() / "swarmy-run-target-" & $getCurrentProcessId()
+        writeFile(target, "{}")
+        try:
+          createSymlink(target, repo / ".swarmy" / "run.json")
+          expect ValueError:
+            discard initRun(repo)
+        finally:
+          removeFile(target)

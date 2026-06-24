@@ -1,6 +1,6 @@
 import std/strutils
 
-import swarmy_cli/[mcp, serve]
+import swarmy_cli/[init, mcp, serve]
 import swarmy_cli/dispatch_types
 import swarmy_core/app
 
@@ -13,6 +13,7 @@ swarmy - make bead-swarm runs visible
 
 Usage:
   swarmy --version
+  swarmy init [--repo PATH] [--db PATH]
   swarmy serve
   swarmy mcp
 """.strip(leading = false) & "\n"
@@ -24,6 +25,8 @@ proc run*(args: seq[string]): CliResult =
   case args[0]
   of "--version", "-v", "version":
     ok(Name & " " & Version & "\n")
+  of "init":
+    init.run(args[1 .. ^1])
   of "serve":
     serve.run(args[1 .. ^1])
   of "mcp":

@@ -18,6 +18,13 @@ suite "cli dispatch":
     check result.output == "swarmy serve: server seam ready\n"
     check result.error == ""
 
+  test "init validates arguments before reaching metadata writes":
+    let result = run(@["init", "--repo"])
+
+    check result.exitCode == 2
+    check result.output == ""
+    check "--repo requires a path" in result.error
+
   test "mcp dispatches through the internal mcp module":
     let result = run(@["mcp"])
 

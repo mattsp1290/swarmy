@@ -1,0 +1,126 @@
+{
+  "tools": [
+    {
+      "name": "swarmy_init",
+      "description": "Initialize a Swarmy run for an explicit local repository path. Swarmy canonicalizes repo/db paths, rejects unsafe .swarmy metadata symlinks, and treats db as a local file path supplied by the caller.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repo": {
+            "type": "string",
+            "description": "Local repository path to initialize; canonicalized before metadata is written"
+          },
+          "db": {
+            "type": "string",
+            "description": "Optional local SQLite path; relative values resolve under repo and symlinked DB files are rejected"
+          }
+        },
+        "required": [
+          "repo"
+        ]
+      }
+    },
+    {
+      "name": "swarmy_agent",
+      "description": "Record or update an agent in the caller-selected local Swarmy store. metadata_json is untrusted JSON and is parsed before persistence.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repo": {
+            "type": "string",
+            "description": "Local repository path; canonicalized before loading run metadata"
+          },
+          "event_id": {
+            "type": "string"
+          },
+          "agent_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "metadata_json": {
+            "type": "string",
+            "description": "Untrusted JSON object string; invalid JSON returns a typed tool error"
+          },
+          "source": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "repo",
+          "event_id",
+          "agent_id",
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "swarmy_stage",
+      "description": "Set a bead's Swarmy stage in the caller-selected local Swarmy store. Stage names and payload_json are validated before persistence.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repo": {
+            "type": "string",
+            "description": "Local repository path; canonicalized before loading run metadata"
+          },
+          "event_id": {
+            "type": "string"
+          },
+          "bead_id": {
+            "type": "string"
+          },
+          "stage": {
+            "type": "string",
+            "description": "One of coding, validation, review, merge, blocked, or complete"
+          },
+          "agent_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "payload_json": {
+            "type": "string",
+            "description": "Untrusted JSON object string; invalid JSON returns a typed tool error"
+          },
+          "source": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "repo",
+          "event_id",
+          "bead_id",
+          "stage"
+        ]
+      }
+    },
+    {
+      "name": "swarmy_snapshot",
+      "description": "Fetch the current persisted Swarmy snapshot from a caller-selected local repository. The repo path is canonicalized and missing stores are reported without creating files.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repo": {
+            "type": "string",
+            "description": "Local repository path; canonicalized before metadata and store reads"
+          }
+        },
+        "required": [
+          "repo"
+        ]
+      }
+    }
+  ]
+}

@@ -13,12 +13,14 @@ type ServeOptions* = object
   host*: string
   port*: int
   staticDir*: string
+  repo*: string
 
 proc defaultServeOptions*(): ServeOptions =
   ServeOptions(
     host: DefaultHost,
     port: DefaultPort,
-    staticDir: DefaultStaticDir
+    staticDir: DefaultStaticDir,
+    repo: "."
   )
 
 proc preview*(options: ServeOptions): string =
@@ -75,6 +77,13 @@ proc parseServeArgs*(args: seq[string]): tuple[
         return (false, result.options, "swarmy serve: --static-dir requires a value\n")
       result.options.staticDir = args[i + 1]
       i += 2
+    of "--repo":
+      if i + 1 >= args.len or args[i + 1].startsWith("-"):
+        return (false, result.options, "swarmy serve: --repo requires a path\n")
+      if args[i + 1].len == 0:
+        return (false, result.options, "swarmy serve: --repo requires a path\n")
+      result.options.repo = args[i + 1]
+      i += 2
     else:
       return (
         false,
@@ -104,7 +113,8 @@ proc serveBlocking*(args: seq[string]): CliResult =
     server_app.serve(ServerConfig(
       address: parsed.options.host,
       port: parsed.options.port,
-      staticDir: parsed.options.staticDir
+      staticDir: parsed.options.staticDir,
+      repoPath: parsed.options.repo
     ))
   except CatchableError as err:
     return CliResult(

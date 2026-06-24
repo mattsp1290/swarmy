@@ -1,8 +1,12 @@
-import std/[asyncdispatch, httpcore, json, os, times, unittest]
+import std/[asyncdispatch, httpcore, json, options, os, times, unittest]
 
 import jazzy
+import tiny_sqlite
 
 import swarmy_core/app
+import swarmy_core/events
+import swarmy_core/persistence
+import swarmy_core/run_metadata
 import swarmy_cli/serve
 import swarmy_server/app as server_app
 
@@ -26,6 +30,60 @@ proc withEmptyTempDir(body: proc(dir: string)) =
     body(dir)
   finally:
     removeDir(dir)
+
+proc withTempRepoAndDist(body: proc(repo, dist, dbPath: string, runId: string)) =
+  let repo = getTempDir() / "swarmy-server-repo-test-" & $getCurrentProcessId() &
+    "-" & $epochTime().int
+  let dist = repo / "dist"
+  let dbPath = repo / "swarmy.db"
+  createDir(repo)
+  createDir(dist)
+  createDir(dist / "assets")
+  writeFile(dist / "index.html", "<!doctype html><title>Swarmy</title>")
+  writeFile(dist / "assets" / "app.js", "console.log('swarmy');")
+  try:
+    let initialized = initRun(repo, some(dbPath))
+    body(repo, dist, dbPath, initialized.metadata.runId)
+  finally:
+    removeDir(repo)
+
+proc insertRun(store: Store, runId, repoPath, status, createdAt, updatedAt: string) =
+  store.db.exec(
+    """
+    INSERT INTO runs(run_id, repo_path, status, created_at, updated_at)
+    VALUES(?, ?, ?, ?, ?)
+    """,
+    runId,
+    repoPath,
+    status,
+    createdAt,
+    updatedAt
+  )
+
+proc insertBead(store: Store, runId, beadId, title, status: string) =
+  store.db.exec(
+    """
+    INSERT INTO beads(
+      run_id, bead_id, title, status, priority, issue_type, updated_at
+    )
+    VALUES(?, ?, ?, ?, 1, 'feature', '2026-06-24T00:00:00Z')
+    """,
+    runId,
+    beadId,
+    title,
+    status
+  )
+
+proc insertAgent(store: Store, runId, agentId, name: string) =
+  store.db.exec(
+    """
+    INSERT INTO agents(agent_id, run_id, name, kind, created_at, updated_at)
+    VALUES(?, ?, ?, 'agent', '2026-06-24T00:00:00Z', '2026-06-24T00:00:00Z')
+    """,
+    agentId,
+    runId,
+    name
+  )
 
 proc dispatchGet(path: string): Context =
   let req = JazzyRequest(
@@ -68,4 +126,112 @@ suite "server app":
 
       let asset = dispatchGet("/assets/app.js")
       check asset.response.code == 200
+      check asset.response.headers["Content-Type"] == "text/javascript"
       check asset.response.body == "console.log('swarmy');"
+
+  test "run endpoints stay read-only when configured store is absent":
+    withTempRepoAndDist proc(repo, dist, dbPath, runId: string) =
+      discard runId
+      check not fileExists(dbPath)
+      server_app.registerRoutes(dist, repo)
+
+      let runs = dispatchGet("/api/runs")
+      check runs.response.code == 200
+      let payload = parseJson(runs.response.body)
+      check payload["runs"].len == 0
+
+      let detail = dispatchGet("/api/runs/missing-run")
+      check detail.response.code == 404
+      check not fileExists(dbPath)
+
+  test "lists configured Swarmy runs with aggregate counts":
+    withTempRepoAndDist proc(repo, dist, dbPath, runId: string) =
+      var store = initializeStore(dbPath)
+      try:
+        store.insertRun(
+          runId,
+          repo,
+          "active",
+          "2026-06-24T00:00:00Z",
+          "2026-06-24T00:00:02Z"
+        )
+        store.insertRun(
+          "run-other",
+          repo / "other",
+          "complete",
+          "2026-06-24T00:00:01Z",
+          "2026-06-24T00:00:01Z"
+        )
+        store.insertBead(runId, "swarmy-4nu", "Expose endpoints", "open")
+        store.insertBead("run-other", "other-bead", "Other run bead", "open")
+        store.insertAgent(runId, "agent-1", "API Agent")
+        discard store.recordStageEvent(
+          "event-1",
+          runId,
+          "swarmy-4nu",
+          "2026-06-24T00:00:02Z",
+          stageCoding
+        )
+      finally:
+        store.close()
+
+      server_app.registerRoutes(dist, repo)
+
+      let runs = dispatchGet("/api/runs")
+      check runs.response.code == 200
+      let payload = parseJson(runs.response.body)
+      check payload["source_repo"].getStr == canonicalRepoPath(repo)
+      check payload["runs"].len == 2
+      check payload["runs"][0]["run_id"].getStr == runId
+      check payload["runs"][0]["latest_event_at"].getStr == "2026-06-24T00:00:02Z"
+      check payload["runs"][0]["bead_count"].getInt == 1
+      check payload["runs"][0]["agent_count"].getInt == 1
+      check payload["runs"][0]["event_count"].getInt == 1
+      check payload["runs"][0]["latest_seq"].getInt == 1
+
+  test "returns run details without cross-run bead leakage":
+    withTempRepoAndDist proc(repo, dist, dbPath, runId: string) =
+      var store = initializeStore(dbPath)
+      try:
+        store.insertRun(
+          runId,
+          repo,
+          "active",
+          "2026-06-24T00:00:00Z",
+          "2026-06-24T00:00:02Z"
+        )
+        store.insertRun(
+          "run-other",
+          repo / "other",
+          "active",
+          "2026-06-24T00:00:00Z",
+          "2026-06-24T00:00:03Z"
+        )
+        store.insertBead(runId, "swarmy-4nu", "Expose endpoints", "open")
+        store.insertBead("run-other", "other-bead", "Other run bead", "open")
+        store.insertAgent(runId, "agent-1", "API Agent")
+        discard store.recordStageEvent(
+          "event-1",
+          runId,
+          "swarmy-4nu",
+          "2026-06-24T00:00:02Z",
+          stageReview
+        )
+      finally:
+        store.close()
+
+      server_app.registerRoutes(dist, repo)
+
+      let detail = dispatchGet("/api/runs/" & runId)
+      check detail.response.code == 200
+      let payload = parseJson(detail.response.body)
+      check payload["run_id"].getStr == runId
+      check payload["latest_event_at"].getStr == "2026-06-24T00:00:02Z"
+      check payload["beads"].len == 1
+      check payload["beads"][0]["id"].getStr == "swarmy-4nu"
+      check payload["beads"][0]["swarm_stage"].getStr == "review"
+      check payload["agents"].len == 1
+      check payload["agents"][0]["id"].getStr == "agent-1"
+
+      let missing = dispatchGet("/api/runs/missing-run")
+      check missing.response.code == 404

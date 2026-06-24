@@ -181,6 +181,7 @@ suite "server app":
           "2026-06-24T00:00:01Z"
         )
         store.insertBead(runId, "swarmy-4nu", "Expose endpoints", "open")
+        store.insertBead(runId, "closed-bead", "Closed bead", "closed")
         store.insertBead("run-other", "other-bead", "Other run bead", "open")
         store.insertAgent(runId, "agent-1", "API Agent")
         discard store.recordStageEvent(
@@ -202,7 +203,8 @@ suite "server app":
       check payload["runs"].len == 2
       check payload["runs"][0]["run_id"].getStr == runId
       check payload["runs"][0]["latest_event_at"].getStr == "2026-06-24T00:00:02Z"
-      check payload["runs"][0]["bead_count"].getInt == 1
+      check payload["runs"][0]["bead_count"].getInt == 2
+      check payload["runs"][0]["active_bead_count"].getInt == 1
       check payload["runs"][0]["agent_count"].getInt == 1
       check payload["runs"][0]["event_count"].getInt == 1
       check payload["runs"][0]["latest_seq"].getInt == 1
@@ -245,6 +247,7 @@ suite "server app":
       let payload = parseJson(detail.response.body)
       check payload["run_id"].getStr == runId
       check payload["latest_event_at"].getStr == "2026-06-24T00:00:02Z"
+      check payload["active_bead_count"].getInt == 1
       check payload["beads"].len == 1
       check payload["beads"][0]["id"].getStr == "swarmy-4nu"
       check payload["beads"][0]["swarm_stage"].getStr == "review"

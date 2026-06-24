@@ -16,6 +16,9 @@ htmldocs/
 /apps/web/node_modules/
 *.log
 
+# Release packaging output (scripts/package.sh)
+/dist/
+
 # Playwright UI smoke artifacts
 /apps/web/test-results/
 /apps/web/playwright-report/

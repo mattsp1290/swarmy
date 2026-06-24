@@ -7,6 +7,7 @@
     fetchRuns,
     hasStoredToken,
     recentEventsCursor,
+    mergeRecentEvents,
     isBlockedEvent,
     eventActor,
     type BeadSummary,
@@ -14,6 +15,9 @@
     type RunEvent,
     type RunSummary
   } from './api';
+
+  const POLL_INTERVAL_MS = 5000;
+  const RECENT_EVENTS_CAP = 50;
 
   const stages = ['coding', 'validation', 'review', 'merge', 'blocked', 'complete', 'unknown'];
   const stageLabels: Record<string, string> = {
@@ -38,6 +42,8 @@
   let recentEvents: RunEvent[] = [];
   let loadingEvents = false;
   let eventsError = '';
+  let eventsCursor = 0;
+  let pollFailed = false;
 
   const repoName = (path: string) => {
     const normalized = path.replace(/\\/g, '/');
@@ -142,10 +148,13 @@
     }
 
     try {
-      const after = recentEventsCursor(selectedRun.latest_seq, 50);
+      const after = recentEventsCursor(selectedRun.latest_seq, RECENT_EVENTS_CAP);
       const page = await fetchRunEvents(runId, after);
       if (detailRequest === requestId && selectedRunId === runId) {
-        recentEvents = page.events.slice().reverse();
+        // Reuse the merge helper so the initial list is capped and ordered
+        // identically to the polled updates.
+        recentEvents = mergeRecentEvents([], page.events, RECENT_EVENTS_CAP);
+        eventsCursor = page.latest_seq;
       }
     } catch (caught) {
       if (detailRequest === requestId && selectedRunId === runId) {
@@ -184,12 +193,70 @@
     }
   };
 
+  // Silent background refresh. This path must NEVER cause a layout shift: it
+  // does not toggle any loading flags, never nulls `selectedRun`, and never
+  // clears `recentEvents`. Populated state is only REPLACED with populated
+  // state, so the rendered DOM keeps the same shape. Errors are swallowed (a
+  // transient poll failure must not blank the UI); `pollFailed` is a non-layout
+  // status flag only.
+  async function refreshActive() {
+    let fresh: RunSummary[];
+    try {
+      fresh = await fetchRuns();
+    } catch {
+      pollFailed = true;
+      return;
+    }
+
+    // Nothing to refresh; never throw on an empty run list.
+    runs = fresh;
+    pollFailed = false;
+
+    const runId = selectedRunId;
+    if (!runId) {
+      return;
+    }
+
+    // Race-guard: capture the in-flight request id so a selection change
+    // mid-poll discards stale results instead of applying them.
+    const requestId = detailRequest;
+
+    try {
+      const detail = await fetchRunDetail(runId);
+      if (detailRequest === requestId && selectedRunId === runId) {
+        selectedRun = detail;
+      }
+
+      const page = await fetchRunEvents(runId, eventsCursor);
+      if (
+        detailRequest === requestId &&
+        selectedRunId === runId &&
+        page.events.length > 0
+      ) {
+        recentEvents = mergeRecentEvents(recentEvents, page.events, RECENT_EVENTS_CAP);
+        eventsCursor = page.latest_seq;
+      }
+    } catch {
+      pollFailed = true;
+    }
+  }
+
   onMount(() => {
     void loadRuns();
+    const timer = setInterval(() => {
+      void refreshActive();
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
   });
 </script>
 
 <main class="app-shell" aria-labelledby="page-title">
+  <!-- Visually-hidden, zero-footprint status for background polls. It carries no
+       layout dimensions (sr-only), so toggling pollFailed cannot shift or resize
+       any visible control. -->
+  <p class="sr-only" role="status" aria-live="polite">
+    {pollFailed ? 'Background refresh failed; showing last known data.' : ''}
+  </p>
   <aside class="run-list" aria-label="Swarm runs">
     <div class="brand-row">
       <h1 id="page-title">Swarmy</h1>

@@ -6,6 +6,7 @@ import {
   buildAuthHeaders,
   ApiError,
   recentEventsCursor,
+  mergeRecentEvents,
   isBlockedEvent,
   eventActor,
   type RunEvent
@@ -96,6 +97,74 @@ test('recentEventsCursor clamps to 0 when the window exceeds latest seq', () => 
 test('recentEventsCursor returns 0 for NaN or negative latest seq', () => {
   assert.equal(recentEventsCursor(Number.NaN, 50), 0);
   assert.equal(recentEventsCursor(-5, 50), 0);
+});
+
+test('mergeRecentEvents prepends incoming reversed ahead of existing (newest-first)', () => {
+  const existing = [makeEvent({ event_id: 'e2', seq: 2 })];
+  const incoming = [
+    makeEvent({ event_id: 'e3', seq: 3 }),
+    makeEvent({ event_id: 'e4', seq: 4 })
+  ];
+  const merged = mergeRecentEvents(existing, incoming, 50);
+  assert.deepEqual(
+    merged.map((e) => e.event_id),
+    ['e4', 'e3', 'e2']
+  );
+});
+
+test('mergeRecentEvents dedupes by event_id keeping the newest occurrence', () => {
+  const existing = [
+    makeEvent({ event_id: 'e3', seq: 3 }),
+    makeEvent({ event_id: 'e2', seq: 2 })
+  ];
+  const incoming = [
+    makeEvent({ event_id: 'e3', seq: 3 }),
+    makeEvent({ event_id: 'e4', seq: 4 })
+  ];
+  const merged = mergeRecentEvents(existing, incoming, 50);
+  assert.deepEqual(
+    merged.map((e) => e.event_id),
+    ['e4', 'e3', 'e2']
+  );
+});
+
+test('mergeRecentEvents caps to N dropping the oldest', () => {
+  const existing = [
+    makeEvent({ event_id: 'e2', seq: 2 }),
+    makeEvent({ event_id: 'e1', seq: 1 })
+  ];
+  const incoming = [
+    makeEvent({ event_id: 'e3', seq: 3 }),
+    makeEvent({ event_id: 'e4', seq: 4 })
+  ];
+  const merged = mergeRecentEvents(existing, incoming, 3);
+  assert.deepEqual(
+    merged.map((e) => e.event_id),
+    ['e4', 'e3', 'e2']
+  );
+});
+
+test('mergeRecentEvents returns existing unchanged for empty incoming', () => {
+  const existing = [
+    makeEvent({ event_id: 'e2', seq: 2 }),
+    makeEvent({ event_id: 'e1', seq: 1 })
+  ];
+  const merged = mergeRecentEvents(existing, [], 50);
+  assert.deepEqual(
+    merged.map((e) => e.event_id),
+    ['e2', 'e1']
+  );
+});
+
+test('mergeRecentEvents does not mutate its inputs', () => {
+  const existing = [makeEvent({ event_id: 'e2', seq: 2 })];
+  const incoming = [makeEvent({ event_id: 'e3', seq: 3 })];
+  const existingCopy = existing.slice();
+  const incomingCopy = incoming.slice();
+  const merged = mergeRecentEvents(existing, incoming, 50);
+  assert.notEqual(merged, existing);
+  assert.deepEqual(existing, existingCopy);
+  assert.deepEqual(incoming, incomingCopy);
 });
 
 test('isBlockedEvent is true only for the blocked stage', () => {

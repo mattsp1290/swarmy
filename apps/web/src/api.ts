@@ -59,12 +59,6 @@ export type RunDetail = RunSummary & {
   errors?: RunError[];
 };
 
-export type AuthConfig = {
-  auth_required: boolean;
-  token_header: string;
-  bearer_supported: boolean;
-};
-
 const authTokenStorageKey = 'swarmy.authToken';
 
 /**
@@ -160,30 +154,23 @@ function readBrowserToken(): string {
 }
 
 /**
- * Returns true when a non-empty token is available (from the URL hash or
- * persisted storage). Used by the UI to tailor the auth-failure message.
+ * Returns true when a token is persisted in storage. Pure read with no side
+ * effects (unlike readBrowserToken, which consumes/strips the URL hash), so it
+ * is safe to call from reactive markup to tailor the auth-failure message.
  */
 export function hasStoredToken(): boolean {
-  return readBrowserToken().length > 0;
+  if (typeof window === 'undefined') {
+    return false;
+  }
+  try {
+    return (window.localStorage.getItem(authTokenStorageKey) ?? '').length > 0;
+  } catch {
+    return false;
+  }
 }
 
 function jsonHeaders(): Record<string, string> {
   return buildAuthHeaders(readBrowserToken());
-}
-
-export async function fetchAuthConfig(): Promise<AuthConfig> {
-  const response = await fetch('/api/auth', {
-    headers: jsonHeaders()
-  });
-  if (!response.ok) {
-    const message =
-      response.status === 401
-        ? 'Local token required or rejected (401).'
-        : `Auth config request failed: ${response.status}`;
-    throw new ApiError(message, response.status, response.status === 401);
-  }
-
-  return (await response.json()) as AuthConfig;
 }
 
 export async function fetchRuns(): Promise<RunSummary[]> {

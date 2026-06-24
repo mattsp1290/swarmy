@@ -1,0 +1,46 @@
+{
+  "schema_version": "bead-swarm-history-v1",
+  "iteration": 16,
+  "branch": "bead-swarm/iteration-16-dashboard-shell",
+  "slug": "dashboard-shell",
+  "main_branch": "main",
+  "main_branch_source": "default",
+  "selected_beads": ["swarmy-1zi"],
+  "beads_done": ["swarmy-1zi"],
+  "beads_blocked": [],
+  "beads_partial": [],
+  "merge_target": "main",
+  "validation": [
+    "npm exec --workspace apps/web tsc -- --noEmit: pass",
+    "npm run build --workspace apps/web: pass",
+    "nimble test: pass",
+    "nimble build: pass",
+    "tests/smoke_serve.sh: pass",
+    "git diff --check: pass",
+    "manual local server smoke of / and /api/runs on port 18282: pass",
+    "in-app browser setup: blocked by runtime sandbox metadata error"
+  ],
+  "review_artifacts_local_only": true,
+  "review_blocker_summary": [
+    "Locke and Wegener requested stale detail-response protection; resolved with a detail request token",
+    "Wegener requested loadingRuns-aware detail panel state; resolved with a Loading dashboard state during initial run fetch",
+    "Locke noted the new API client must be committed; resolved by staging apps/web/src/api.ts"
+  ],
+  "reviews": [
+    {
+      "reviewer": "Wegener",
+      "verdict": "APPROVE after fixes",
+      "critical_count": 0,
+      "important_count": 1,
+      "moderate_count": 1
+    },
+    {
+      "reviewer": "Locke",
+      "verdict": "APPROVE after fixes",
+      "critical_count": 0,
+      "important_count": 2,
+      "moderate_count": 0
+    }
+  ],
+  "status": "complete"
+}

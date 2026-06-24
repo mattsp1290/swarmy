@@ -4,7 +4,7 @@ import tiny_sqlite
 
 import swarmy_cli/event_commands
 import swarmy_cli/init as init_command
-import swarmy_core/[app, events, guidance, persistence, run_metadata]
+import swarmy_core/[app, diagnostics, events, guidance, persistence, run_metadata]
 
 const
   McpProtocolVersion* = "2025-06-18"
@@ -26,7 +26,7 @@ proc rpcResult(id, value: JsonNode): string =
 proc rpcError(id: JsonNode, code: int, message: string): string =
   var error = newJObject()
   error["code"] = %code
-  error["message"] = %message
+  error["message"] = %redactDiagnostic(message)
 
   var response = newJObject()
   response["jsonrpc"] = %"2.0"
@@ -52,29 +52,57 @@ proc optionalStringArg(args: JsonNode, name: string): Option[string] =
   else:
     none(string)
 
-proc toolError(name, error: string): JsonNode =
+proc toolError(name, error: string, code = "tool_error"): JsonNode =
   var payload = newJObject()
   payload["ok"] = %false
   payload["tool"] = %name
-  payload["error"] = %error
+  payload["code"] = %code
+  payload["error"] = %redactDiagnostic(error)
   textResult(payload.pretty, isError = true)
 
 proc requireObjectArgs(toolName: string, args: JsonNode): Option[JsonNode] =
   if args.kind == JObject:
     return none(JsonNode)
-  some(toolError(toolName, toolName & ": arguments must be an object"))
+  some(toolError(
+    toolName,
+    toolName & ": arguments must be an object",
+    "invalid_arguments"
+  ))
 
 proc requireStringField(
   toolName: string,
   args: JsonNode,
   name: string
 ): tuple[ok: bool, value: string, error: JsonNode] =
-  if args.kind != JObject or not args.hasKey(name) or
-      args[name].kind != JString or args[name].getStr.len == 0:
+  if args.kind != JObject or not args.hasKey(name) or args[name].kind == JNull:
     return (
       false,
       "",
-      toolError(toolName, toolName & ": missing required argument `" & name & "`")
+      toolError(
+        toolName,
+        toolName & ": missing required argument `" & name & "`",
+        "missing_argument"
+      )
+    )
+  if args[name].kind != JString:
+    return (
+      false,
+      "",
+      toolError(
+        toolName,
+        toolName & ": argument `" & name & "` must be a string",
+        "invalid_arguments"
+      )
+    )
+  if args[name].getStr.len == 0:
+    return (
+      false,
+      "",
+      toolError(
+        toolName,
+        toolName & ": missing required argument `" & name & "`",
+        "missing_argument"
+      )
     )
   (true, args[name].getStr, newJNull())
 
@@ -101,6 +129,21 @@ proc addReq(result: var seq[string], flag, value: string) =
   result.add flag
   result.add value
 
+proc validateOptionalStringFields(
+  toolName: string,
+  args: JsonNode,
+  names: openArray[string]
+): Option[JsonNode] =
+  for name in names:
+    if args.kind == JObject and args.hasKey(name) and
+        args[name].kind notin {JString, JNull}:
+      return some(toolError(
+        toolName,
+        toolName & ": argument `" & name & "` must be a string",
+        "invalid_arguments"
+      ))
+  none(JsonNode)
+
 proc commonArgs(args: JsonNode): seq[string] =
   result.addReq("--repo", args.stringArg("repo", "."))
   result.addOpt("--source", args.optionalStringArg("source"))
@@ -114,7 +157,8 @@ proc runCliTool(name: string, cliResult: auto): JsonNode =
     payload["output"] = %cliResult.output.strip()
     textResult(payload.pretty)
   else:
-    toolError(name, cliResult.error.strip())
+    let code = if cliResult.exitCode == 2: "invalid_arguments" else: "execution_failed"
+    toolError(name, cliResult.error.strip(), code)
 
 proc initTool(args: JsonNode): JsonNode =
   let objectError = requireObjectArgs("swarmy_init", args)
@@ -123,6 +167,9 @@ proc initTool(args: JsonNode): JsonNode =
   let repo = requireStringField("swarmy_init", args, "repo")
   if not repo.ok:
     return repo.error
+  let optionalError = validateOptionalStringFields("swarmy_init", args, ["db"])
+  if optionalError.isSome:
+    return optionalError.get
 
   var cliArgs: seq[string]
   cliArgs.addReq("--repo", repo.value)
@@ -137,6 +184,13 @@ proc agentTool(args: JsonNode): JsonNode =
     let found = requireStringField("swarmy_agent", args, name)
     if not found.ok:
       return found.error
+  let optionalError = validateOptionalStringFields(
+    "swarmy_agent",
+    args,
+    ["kind", "metadata_json", "source", "at"]
+  )
+  if optionalError.isSome:
+    return optionalError.get
 
   var cliArgs = args.commonArgs()
   cliArgs.addReq("--event-id", args.stringArg("event_id"))
@@ -154,6 +208,13 @@ proc stageTool(args: JsonNode): JsonNode =
     let found = requireStringField("swarmy_stage", args, name)
     if not found.ok:
       return found.error
+  let optionalError = validateOptionalStringFields(
+    "swarmy_stage",
+    args,
+    ["agent_id", "title", "payload_json", "source", "at"]
+  )
+  if optionalError.isSome:
+    return optionalError.get
 
   var cliArgs = args.commonArgs()
   cliArgs.addReq("--event-id", args.stringArg("event_id"))
@@ -233,46 +294,70 @@ proc toolsList(): JsonNode =
     "tools": [
       {
         "name": "swarmy_init",
-        "description": "Initialize a Swarmy run in a repository",
+        "description": "Initialize a Swarmy run for an explicit local repository path. Swarmy canonicalizes repo/db paths, rejects unsafe .swarmy metadata symlinks, and treats db as a local file path supplied by the caller.",
         "inputSchema": toolSchema(["repo"], %*{
-          "repo": {"type": "string"},
-          "db": {"type": "string"}
+          "repo": {
+            "type": "string",
+            "description": "Local repository path to initialize; canonicalized before metadata is written"
+          },
+          "db": {
+            "type": "string",
+            "description": "Optional local SQLite path; relative values resolve under repo and symlinked DB files are rejected"
+          }
         })
       },
       {
         "name": "swarmy_agent",
-        "description": "Record or update an agent and append an agent.changed event",
+        "description": "Record or update an agent in the caller-selected local Swarmy store. metadata_json is untrusted JSON and is parsed before persistence.",
         "inputSchema": toolSchema(["repo", "event_id", "agent_id", "name"], %*{
-          "repo": {"type": "string"},
+          "repo": {
+            "type": "string",
+            "description": "Local repository path; canonicalized before loading run metadata"
+          },
           "event_id": {"type": "string"},
           "agent_id": {"type": "string"},
           "name": {"type": "string"},
           "kind": {"type": "string"},
-          "metadata_json": {"type": "string"},
+          "metadata_json": {
+            "type": "string",
+            "description": "Untrusted JSON object string; invalid JSON returns a typed tool error"
+          },
           "source": {"type": "string"},
           "at": {"type": "string"}
         })
       },
       {
         "name": "swarmy_stage",
-        "description": "Set a bead's Swarmy stage and append a stage.changed event",
+        "description": "Set a bead's Swarmy stage in the caller-selected local Swarmy store. Stage names and payload_json are validated before persistence.",
         "inputSchema": toolSchema(["repo", "event_id", "bead_id", "stage"], %*{
-          "repo": {"type": "string"},
+          "repo": {
+            "type": "string",
+            "description": "Local repository path; canonicalized before loading run metadata"
+          },
           "event_id": {"type": "string"},
           "bead_id": {"type": "string"},
-          "stage": {"type": "string"},
+          "stage": {
+            "type": "string",
+            "description": "One of coding, validation, review, merge, blocked, or complete"
+          },
           "agent_id": {"type": "string"},
           "title": {"type": "string"},
-          "payload_json": {"type": "string"},
+          "payload_json": {
+            "type": "string",
+            "description": "Untrusted JSON object string; invalid JSON returns a typed tool error"
+          },
           "source": {"type": "string"},
           "at": {"type": "string"}
         })
       },
       {
         "name": "swarmy_snapshot",
-        "description": "Fetch the current persisted Swarmy run snapshot",
+        "description": "Fetch the current persisted Swarmy snapshot from a caller-selected local repository. The repo path is canonicalized and missing stores are reported without creating files.",
         "inputSchema": toolSchema(["repo"], %*{
-          "repo": {"type": "string"}
+          "repo": {
+            "type": "string",
+            "description": "Local repository path; canonicalized before metadata and store reads"
+          }
         })
       }
     ]

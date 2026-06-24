@@ -192,6 +192,8 @@ proc ensureParentDir(path: string) =
     createDir(dir)
 
 proc openStore*(path: string): Store =
+  if path != ":memory:" and symlinkExists(path):
+    raise newException(ValueError, "store path must not be a symlink: " & path)
   ensureParentDir(path)
   let db = openDatabase(path)
   db.exec("PRAGMA busy_timeout = " & $DefaultBusyTimeoutMs)

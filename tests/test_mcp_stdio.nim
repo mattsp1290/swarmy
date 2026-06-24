@@ -54,6 +54,12 @@ suite "mcp stdio":
       "swarmy_stage",
       "swarmy_snapshot"
     ]
+    check "canonicalizes repo/db paths" in
+      listed["result"]["tools"][0]["description"].getStr
+    check "untrusted JSON" in
+      listed["result"]["tools"][1]["description"].getStr
+    check "Stage names and payload_json are validated" in
+      listed["result"]["tools"][2]["description"].getStr
 
     check initialized["result"]["capabilities"].hasKey("resources")
     check initialized["result"]["capabilities"].hasKey("prompts")
@@ -107,6 +113,13 @@ suite "mcp stdio":
     check unknownResource["error"]["code"].getInt == -32602
     check "unknown resource: swarmy://guidance/missing" in
       unknownResource["error"]["message"].getStr
+
+    let secretResource = response(request(40, "resources/read", %*{
+      "uri": "swarmy://guidance/missing?token=super-secret"
+    }))
+    check secretResource["error"]["code"].getInt == -32602
+    check "super-secret" notin secretResource["error"]["message"].getStr
+    check "[REDACTED]" in secretResource["error"]["message"].getStr
 
     let missingPromptParams = response($(%*{
       "jsonrpc": "2.0",
@@ -231,6 +244,69 @@ suite "mcp stdio":
 
     check node.isToolError
     check "arguments must be an object" in node.toolPayload["error"].getStr
+    check node.toolPayload["code"].getStr == "invalid_arguments"
+
+  test "MCP tool arguments require strings":
+    let required = response(callTool(1, "swarmy_stage", %*{
+      "repo": 42,
+      "event_id": "stage-event-1",
+      "bead_id": "swarmy-el7",
+      "stage": "coding"
+    }))
+    check required.isToolError
+    check required.toolPayload["code"].getStr == "invalid_arguments"
+    check "argument `repo` must be a string" in required.toolPayload["error"].getStr
+
+    let optional = response(callTool(2, "swarmy_stage", %*{
+      "repo": ".",
+      "event_id": "stage-event-1",
+      "bead_id": "swarmy-el7",
+      "stage": "coding",
+      "source": 42
+    }))
+    check optional.isToolError
+    check optional.toolPayload["code"].getStr == "invalid_arguments"
+    check "argument `source` must be a string" in
+      optional.toolPayload["error"].getStr
+
+  test "invalid MCP stage and payload inputs return typed tool errors":
+    withTempRepo proc(repo, dbPath: string) =
+      discard response(callTool(1, "swarmy_init", %*{
+        "repo": repo,
+        "db": dbPath
+      })).toolPayload
+
+      let badStage = response(callTool(2, "swarmy_stage", %*{
+        "repo": repo,
+        "event_id": "stage-event-1",
+        "bead_id": "swarmy-el7",
+        "stage": "legacy-stage"
+      }))
+      check badStage.isToolError
+      check badStage.toolPayload["code"].getStr == "invalid_arguments"
+      check "unknown stage" in badStage.toolPayload["error"].getStr
+
+      let badPayload = response(callTool(3, "swarmy_agent", %*{
+        "repo": repo,
+        "event_id": "agent-event-1",
+        "agent_id": "agent-1",
+        "name": "MCP Agent",
+        "metadata_json": "{\"token\":\"super-secret"
+      }))
+      check badPayload.isToolError
+      check badPayload.toolPayload["code"].getStr == "invalid_arguments"
+      check "super-secret" notin badPayload.toolPayload["error"].getStr
+
+      let arrayPayload = response(callTool(4, "swarmy_agent", %*{
+        "repo": repo,
+        "event_id": "agent-event-2",
+        "agent_id": "agent-2",
+        "name": "MCP Agent",
+        "metadata_json": "[]"
+      }))
+      check arrayPayload.isToolError
+      check arrayPayload.toolPayload["code"].getStr == "invalid_arguments"
+      check "expected a JSON object" in arrayPayload.toolPayload["error"].getStr
 
   test "snapshot reads do not initialize missing stores":
     withTempRepo proc(repo, dbPath: string) =

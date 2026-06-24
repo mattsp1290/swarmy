@@ -45,7 +45,13 @@ proc utcNow(): string =
 
 proc validateJson(value, name, command: string): tuple[ok: bool, error: string] =
   try:
-    discard parseJson(value)
+    let node = parseJson(value)
+    if node.kind != JObject:
+      return (
+        false,
+        "swarmy " & command & ": invalid " & name &
+          ": expected a JSON object\n"
+      )
     (true, "")
   except JsonParsingError as err:
     (false, "swarmy " & command & ": invalid " & name & ": " & err.msg & "\n")
@@ -333,8 +339,13 @@ proc runStage*(args: seq[string]): CliResult =
   if title.len == 0:
     title = beadId
 
+  var stage: Stage
   try:
-    let stage = parseWritableStage(stageName)
+    stage = parseWritableStage(stageName)
+  except ValueError as err:
+    return CliResult(exitCode: 2, error: "swarmy stage: " & err.msg & "\n")
+
+  try:
     var seq: int64
     withStore common.repo, proc(store: Store, metadata: RunMetadata) =
       store.db.transaction:

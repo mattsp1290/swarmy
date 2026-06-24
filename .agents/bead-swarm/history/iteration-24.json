@@ -1,0 +1,35 @@
+{
+  "schema_version": "bead-swarm-history-v1",
+  "iteration": 24,
+  "branch": "bead-swarm/iteration-24-cli-mcp-parity-coverage",
+  "slug": "cli-mcp-parity-coverage",
+  "main_branch": "main",
+  "main_branch_source": "default",
+  "execution_mode": "orchestrator-subagent",
+  "degraded_reason": null,
+  "selected_beads": ["swarmy-vvw"],
+  "beads_done": ["swarmy-vvw"],
+  "beads_blocked": [],
+  "beads_partial": [],
+  "merge_target": "main",
+  "validation": [
+    "nim test_cli_mcp_parity (4 cases) PASS",
+    "nim test_mcp_golden (6 cases) PASS",
+    "nimble test: PASS (all suites)",
+    "nimble build: PASS"
+  ],
+  "review_mode": "reviewer-subagents",
+  "review_assurance": "normal",
+  "findings_fixed_re_reviewed": true,
+  "review_artifacts_local_only": true,
+  "review_blocker_summary": [
+    "round1 redowl: default-source seam untested - FIXED",
+    "round1 redowl: resource/prompt negative cases untested - FIXED",
+    "round1 redowl: normalize version over-blank - documented"
+  ],
+  "reviews": [
+    {"reviewer": "redowl", "verdict": "REQUEST_CHANGES->APPROVE (re-review)", "artifact": "reviews/bead-swarm-iteration-24-cli-mcp-parity-coverage/redowl/04-action-items.md"},
+    {"reviewer": "scout", "verdict": "APPROVE", "artifact": "reviews/bead-swarm-iteration-24-cli-mcp-parity-coverage/scout/04-action-items.md"}
+  ],
+  "status": "complete"
+}

@@ -38,6 +38,21 @@ proc sameEventContent(
     row.optionString("stage") == stage and
     row["payload_json"].fromDbValue(string) == payloadJson
 
+proc validateEventAgentRun(store: Store, runId: string, agentId: Option[string]) =
+  if agentId.isNone:
+    return
+
+  let found = store.db.value(
+    "SELECT COUNT(*) FROM agents WHERE run_id = ? AND agent_id = ?",
+    runId,
+    agentId.get
+  ).get.fromDbValue(int64)
+  if found == 0:
+    raise newException(
+      ValueError,
+      "agent does not belong to run: " & agentId.get
+    )
+
 const StoreSchema = """
 CREATE TABLE IF NOT EXISTS schema_migrations (
   version INTEGER PRIMARY KEY,
@@ -207,6 +222,7 @@ proc appendEvent*(
   payloadJson = "{}"
 ): int64 =
   store.db.transaction:
+    store.validateEventAgentRun(runId, agentId)
     store.db.exec(
       "INSERT OR IGNORE INTO event_cursors(run_id, next_seq) VALUES(?, 1)",
       runId

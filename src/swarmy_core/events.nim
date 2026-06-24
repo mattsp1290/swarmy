@@ -53,21 +53,6 @@ proc parseWritableStage*(name: string): Stage =
   if result == stageUnknown and name != "unknown":
     raise newException(ValueError, "unknown stage: " & name)
 
-proc validateAgentRun(store: Store, runId: string, agentId: Option[string]) =
-  if agentId.isNone:
-    return
-
-  let found = store.db.value(
-    "SELECT COUNT(*) FROM agents WHERE run_id = ? AND agent_id = ?",
-    runId,
-    agentId.get
-  ).get.fromDbValue(int64)
-  if found == 0:
-    raise newException(
-      ValueError,
-      "agent does not belong to run: " & agentId.get
-    )
-
 proc recordStageEvent*(
   store: Store,
   eventId: string,
@@ -79,7 +64,6 @@ proc recordStageEvent*(
   source = "swarmy",
   payloadJson = "{}"
 ): int64 =
-  store.validateAgentRun(runId, agentId)
   appendEvent(
     store,
     eventId,

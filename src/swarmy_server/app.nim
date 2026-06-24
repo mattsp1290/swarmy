@@ -85,9 +85,18 @@ proc openConfiguredStore(): Option[Store] =
   if metadata.isNone or not fileExists(metadata.get.dbPath):
     return none(Store)
 
+  some(openStore(metadata.get.dbPath))
+
+proc prepareConfiguredStore(repoPath: string) =
+  let metadata = readMetadataIfPresent(repoPath)
+  if metadata.isNone or not fileExists(metadata.get.dbPath):
+    return
+
   var store = openStore(metadata.get.dbPath)
-  store.initializeSchema()
-  some(store)
+  try:
+    store.initializeSchema()
+  finally:
+    store.close()
 
 proc runSummary(row: ResultRow): JsonNode =
   %*{
@@ -96,6 +105,7 @@ proc runSummary(row: ResultRow): JsonNode =
     "status": row["status"].fromDbValue(string),
     "created_at": row["created_at"].fromDbValue(string),
     "updated_at": row["updated_at"].fromDbValue(string),
+    "latest_event_at": row["latest_event_at"].fromDbValue(string),
     "bead_count": row["bead_count"].fromDbValue(int64),
     "agent_count": row["agent_count"].fromDbValue(int64),
     "event_count": row["event_count"].fromDbValue(int64),
@@ -115,17 +125,33 @@ proc listRuns(ctx: Context) {.gcsafe.} =
   var runs = newJArray()
   for row in store.db.iterate(
     """
+    WITH bead_counts AS (
+      SELECT run_id, COUNT(*) AS bead_count
+      FROM beads
+      GROUP BY run_id
+    ),
+    agent_counts AS (
+      SELECT run_id, COUNT(*) AS agent_count
+      FROM agents
+      GROUP BY run_id
+    ),
+    event_counts AS (
+      SELECT run_id, COUNT(*) AS event_count, COALESCE(MAX(seq), 0) AS latest_seq,
+        COALESCE(MAX(occurred_at), '') AS latest_event_at
+      FROM events
+      GROUP BY run_id
+    )
     SELECT r.run_id, r.repo_path, r.status, r.created_at, r.updated_at,
-      COUNT(DISTINCT b.bead_id) AS bead_count,
-      COUNT(DISTINCT a.agent_id) AS agent_count,
-      COUNT(DISTINCT e.event_id) AS event_count,
-      COALESCE(MAX(e.seq), 0) AS latest_seq
+      COALESCE(e.latest_event_at, r.updated_at) AS latest_event_at,
+      COALESCE(b.bead_count, 0) AS bead_count,
+      COALESCE(a.agent_count, 0) AS agent_count,
+      COALESCE(e.event_count, 0) AS event_count,
+      COALESCE(e.latest_seq, 0) AS latest_seq
     FROM runs r
-    LEFT JOIN beads b ON b.run_id = r.run_id
-    LEFT JOIN agents a ON a.run_id = r.run_id
-    LEFT JOIN events e ON e.run_id = r.run_id
-    GROUP BY r.run_id, r.repo_path, r.status, r.created_at, r.updated_at
-    ORDER BY r.updated_at DESC, r.created_at DESC, r.run_id
+    LEFT JOIN bead_counts b ON b.run_id = r.run_id
+    LEFT JOIN agent_counts a ON a.run_id = r.run_id
+    LEFT JOIN event_counts e ON e.run_id = r.run_id
+    ORDER BY latest_event_at DESC, r.created_at DESC, r.run_id
     """
   ):
     runs.add row.runSummary()
@@ -144,18 +170,40 @@ proc runDetail(ctx: Context) {.gcsafe.} =
 
   let row = store.db.one(
     """
+    WITH bead_counts AS (
+      SELECT run_id, COUNT(*) AS bead_count
+      FROM beads
+      WHERE run_id = ?
+      GROUP BY run_id
+    ),
+    agent_counts AS (
+      SELECT run_id, COUNT(*) AS agent_count
+      FROM agents
+      WHERE run_id = ?
+      GROUP BY run_id
+    ),
+    event_counts AS (
+      SELECT run_id, COUNT(*) AS event_count, COALESCE(MAX(seq), 0) AS latest_seq,
+        COALESCE(MAX(occurred_at), '') AS latest_event_at
+      FROM events
+      WHERE run_id = ?
+      GROUP BY run_id
+    )
     SELECT r.run_id, r.repo_path, r.status, r.created_at, r.updated_at,
-      COUNT(DISTINCT b.bead_id) AS bead_count,
-      COUNT(DISTINCT a.agent_id) AS agent_count,
-      COUNT(DISTINCT e.event_id) AS event_count,
-      COALESCE(MAX(e.seq), 0) AS latest_seq
+      COALESCE(e.latest_event_at, r.updated_at) AS latest_event_at,
+      COALESCE(b.bead_count, 0) AS bead_count,
+      COALESCE(a.agent_count, 0) AS agent_count,
+      COALESCE(e.event_count, 0) AS event_count,
+      COALESCE(e.latest_seq, 0) AS latest_seq
     FROM runs r
-    LEFT JOIN beads b ON b.run_id = r.run_id
-    LEFT JOIN agents a ON a.run_id = r.run_id
-    LEFT JOIN events e ON e.run_id = r.run_id
+    LEFT JOIN bead_counts b ON b.run_id = r.run_id
+    LEFT JOIN agent_counts a ON a.run_id = r.run_id
+    LEFT JOIN event_counts e ON e.run_id = r.run_id
     WHERE r.run_id = ?
-    GROUP BY r.run_id, r.repo_path, r.status, r.created_at, r.updated_at
     """,
+    runId,
+    runId,
+    runId,
     runId
   )
   if row.isNone:
@@ -223,4 +271,5 @@ proc registerRoutes*(staticDir: string, repoPath = ".") =
 
 proc serve*(config: ServerConfig) =
   registerRoutes(config.staticDir, config.repoPath)
+  prepareConfiguredStore(currentRepoRoot())
   Jazzy.serve(config.port, config.address)

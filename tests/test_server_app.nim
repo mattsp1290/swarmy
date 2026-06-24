@@ -129,6 +129,21 @@ suite "server app":
       check asset.response.headers["Content-Type"] == "text/javascript"
       check asset.response.body == "console.log('swarmy');"
 
+  test "run endpoints stay read-only when configured store is absent":
+    withTempRepoAndDist proc(repo, dist, dbPath, runId: string) =
+      discard runId
+      check not fileExists(dbPath)
+      server_app.registerRoutes(dist, repo)
+
+      let runs = dispatchGet("/api/runs")
+      check runs.response.code == 200
+      let payload = parseJson(runs.response.body)
+      check payload["runs"].len == 0
+
+      let detail = dispatchGet("/api/runs/missing-run")
+      check detail.response.code == 404
+      check not fileExists(dbPath)
+
   test "lists configured Swarmy runs with aggregate counts":
     withTempRepoAndDist proc(repo, dist, dbPath, runId: string) =
       var store = initializeStore(dbPath)
@@ -168,6 +183,7 @@ suite "server app":
       check payload["source_repo"].getStr == canonicalRepoPath(repo)
       check payload["runs"].len == 2
       check payload["runs"][0]["run_id"].getStr == runId
+      check payload["runs"][0]["latest_event_at"].getStr == "2026-06-24T00:00:02Z"
       check payload["runs"][0]["bead_count"].getInt == 1
       check payload["runs"][0]["agent_count"].getInt == 1
       check payload["runs"][0]["event_count"].getInt == 1
@@ -210,6 +226,7 @@ suite "server app":
       check detail.response.code == 200
       let payload = parseJson(detail.response.body)
       check payload["run_id"].getStr == runId
+      check payload["latest_event_at"].getStr == "2026-06-24T00:00:02Z"
       check payload["beads"].len == 1
       check payload["beads"][0]["id"].getStr == "swarmy-4nu"
       check payload["beads"][0]["swarm_stage"].getStr == "review"

@@ -1,0 +1,43 @@
+{
+  "schema_version": "bead-swarm-history-v1",
+  "iteration": 15,
+  "branch": "bead-swarm/iteration-15-detail-endpoints",
+  "slug": "detail-endpoints",
+  "main_branch": "main",
+  "main_branch_source": "default",
+  "selected_beads": ["swarmy-s36"],
+  "beads_done": ["swarmy-s36"],
+  "beads_blocked": [],
+  "beads_partial": [],
+  "merge_target": "main",
+  "validation": [
+    "nim c -r --path:src --hints:off --verbosity:0 tests/test_server_app.nim: pass",
+    "nimble test: pass",
+    "nimble build: pass",
+    "npm run build --workspace apps/web: pass",
+    "tests/smoke_serve.sh: pass",
+    "git diff --check: pass"
+  ],
+  "review_artifacts_local_only": true,
+  "review_blocker_summary": [
+    "McClintock requested aggregate bead last_event_at and run-not-found consistency for child detail endpoints; resolved with aggregate event timestamps and run validation before child lookup",
+    "Hegel requested aggregate bead last_event_at when later non-stage events exist; resolved with a regression covering later non-stage bead events"
+  ],
+  "reviews": [
+    {
+      "reviewer": "McClintock",
+      "verdict": "APPROVE after fixes",
+      "critical_count": 0,
+      "important_count": 1,
+      "moderate_count": 1
+    },
+    {
+      "reviewer": "Hegel",
+      "verdict": "APPROVE after fixes",
+      "critical_count": 0,
+      "important_count": 1,
+      "moderate_count": 0
+    }
+  ],
+  "status": "complete"
+}

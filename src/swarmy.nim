@@ -2,12 +2,21 @@ import std/os
 
 import swarmy_cli/dispatch
 import swarmy_cli/mcp_stdio
+from swarmy_cli/serve import serveBlocking
 
 proc main*() =
   let args = commandLineParams()
   if args.len == 1 and args[0] == "mcp":
     serveMcpStdio()
     quit(0)
+  if args.len >= 1 and args[0] == "serve":
+    let serveArgs = if args.len > 1: args[1 .. ^1] else: @[]
+    let result = serveBlocking(serveArgs)
+    if result.output.len > 0:
+      stdout.write(result.output)
+    if result.error.len > 0:
+      stderr.write(result.error)
+    quit(result.exitCode)
 
   let result = run(args)
 

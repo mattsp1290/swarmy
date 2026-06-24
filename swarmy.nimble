@@ -11,6 +11,7 @@ bin           = @["swarmy"]
 # Dependencies
 
 requires "nim >= 2.2.4"
+requires "https://github.com/mattsp1290/jazzy-framework#a961fd30341a27c94195ddc81184b81fea4317a5"
 requires "tiny_sqlite >= 0.2.0"
 
 # Tasks

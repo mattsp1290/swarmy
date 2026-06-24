@@ -26,6 +26,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
+command -v curl >/dev/null 2>&1 || { echo "smoke-e2e: curl is required" >&2; exit 1; }
+command -v python3 >/dev/null 2>&1 || { echo "smoke-e2e: python3 is required" >&2; exit 1; }
+
 # Ensure the binary and web build exist (cheap no-ops once built).
 [[ -x "${SWARMY}" ]] || (cd "${ROOT}" && nimble build)
 [[ -f "${ROOT}/apps/web/dist/index.html" ]] || \
@@ -61,9 +64,28 @@ fi
   >"${TMPDIR}/serve.log" 2>&1 &
 SERVE_PID="$!"
 
-# Wait for the server to accept requests.
+# Fail fast if our own server could not bind (e.g. the port is already held by
+# a leaked/foreign process): otherwise every assertion below would silently run
+# against that other server. swarmy serve exits non-zero and logs "failed to
+# start" on a bind error.
+assert_our_server_alive() {
+  if grep -q "failed to start" "${TMPDIR}/serve.log" 2>/dev/null; then
+    echo "smoke-e2e: swarmy serve failed to bind 127.0.0.1:${PORT} (port in use?)" >&2
+    cat "${TMPDIR}/serve.log" >&2 || true
+    exit 1
+  fi
+  if ! kill -0 "${SERVE_PID}" 2>/dev/null; then
+    echo "smoke-e2e: swarmy serve process exited early" >&2
+    cat "${TMPDIR}/serve.log" >&2 || true
+    exit 1
+  fi
+}
+
+# Wait for the server to accept requests, bailing out the moment our own
+# process dies rather than waiting to query a stranger's server.
 ready=0
 for _ in $(seq 1 40); do
+  assert_our_server_alive
   if curl -fsS "http://127.0.0.1:${PORT}/api/health" >"${TMPDIR}/health.json" 2>/dev/null; then
     ready=1
     break
@@ -75,12 +97,15 @@ if [[ "${ready}" -ne 1 ]]; then
   cat "${TMPDIR}/serve.log" >&2 || true
   exit 1
 fi
+# Re-check after a successful health probe to close the race where a foreign
+# server answered while ours was still failing to bind.
+assert_our_server_alive
 grep -q '"status":"ok"' "${TMPDIR}/health.json"
 
 # 5. Verify the UI-facing state endpoints reflect the recorded run/bead/stages.
 curl -fsS "http://127.0.0.1:${PORT}/api/runs" >"${TMPDIR}/runs.json"
 RUN_ID="$(
-  python3 - "${TMPDIR}/runs.json" "${BEAD}" <<'PY'
+  python3 - "${TMPDIR}/runs.json" <<'PY'
 import json, sys
 with open(sys.argv[1]) as fh:
     data = json.load(fh)

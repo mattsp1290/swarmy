@@ -6,6 +6,7 @@ export type RunSummary = {
   updated_at: string;
   latest_event_at: string;
   bead_count: number;
+  active_bead_count: number;
   agent_count: number;
   event_count: number;
   latest_seq: number;

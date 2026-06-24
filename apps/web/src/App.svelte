@@ -37,6 +37,43 @@
   const activityLabel = (run: RunSummary | RunDetail) =>
     run.latest_event_at || run.updated_at || run.created_at || 'no activity';
 
+  const parseTime = (value: string) => {
+    const time = Date.parse(value);
+    return Number.isNaN(time) ? 0 : time;
+  };
+
+  const relativeTime = (value: string) => {
+    const time = parseTime(value);
+    if (time === 0) {
+      return 'unknown';
+    }
+
+    const seconds = Math.max(0, Math.floor((Date.now() - time) / 1000));
+    if (seconds < 60) {
+      return `${seconds}s`;
+    }
+
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) {
+      return `${minutes}m`;
+    }
+
+    const hours = Math.floor(minutes / 60);
+    if (hours < 48) {
+      return `${hours}h`;
+    }
+
+    return `${Math.floor(hours / 24)}d`;
+  };
+
+  const activeBeadCount = (run: RunSummary | RunDetail) => {
+    if ('beads' in run) {
+      return run.beads.filter((bead) => bead.status !== 'closed').length;
+    }
+
+    return run.active_bead_count;
+  };
+
   const stageFor = (bead: BeadSummary) =>
     bead.current_stage?.stage ?? bead.swarm_stage ?? 'unassigned';
 
@@ -92,11 +129,6 @@
       await selectRun(nextRun.run_id);
     } catch (caught) {
       error = caught instanceof Error ? caught.message : 'Run list request failed';
-      detailRequest += 1;
-      runs = [];
-      selectedRunId = '';
-      selectedRun = null;
-      loadingDetail = false;
     } finally {
       loadingRuns = false;
     }
@@ -133,10 +165,15 @@
             <span class="run-main">
               <strong>{repoName(run.repo_path)}</strong>
               <small>{run.run_id}</small>
+              <small>{run.repo_path}</small>
             </span>
             <span class="run-meta">
               <span>{run.status}</span>
-              <strong>{run.bead_count}</strong>
+              <strong>{activeBeadCount(run)}</strong>
+            </span>
+            <span class="run-timing">
+              <small>age {relativeTime(run.created_at)}</small>
+              <small>active {relativeTime(activityLabel(run))}</small>
             </span>
           </button>
         {/each}
@@ -165,8 +202,8 @@
         </div>
         <dl class="run-stats" aria-label="Run totals">
           <div>
-            <dt>Beads</dt>
-            <dd>{selectedRun.bead_count}</dd>
+            <dt>Active</dt>
+            <dd>{activeBeadCount(selectedRun)}</dd>
           </div>
           <div>
             <dt>Agents</dt>

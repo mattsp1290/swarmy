@@ -107,6 +107,7 @@ proc runSummary(row: ResultRow): JsonNode =
     "updated_at": row["updated_at"].fromDbValue(string),
     "latest_event_at": row["latest_event_at"].fromDbValue(string),
     "bead_count": row["bead_count"].fromDbValue(int64),
+    "active_bead_count": row["active_bead_count"].fromDbValue(int64),
     "agent_count": row["agent_count"].fromDbValue(int64),
     "event_count": row["event_count"].fromDbValue(int64),
     "latest_seq": row["latest_seq"].fromDbValue(int64)
@@ -132,7 +133,9 @@ proc findRunSummary(store: Store, runId: string): Option[JsonNode] =
   let row = store.db.one(
     """
     WITH bead_counts AS (
-      SELECT run_id, COUNT(*) AS bead_count
+      SELECT run_id,
+        COUNT(*) AS bead_count,
+        SUM(CASE WHEN status = 'closed' THEN 0 ELSE 1 END) AS active_bead_count
       FROM beads
       WHERE run_id = ?
       GROUP BY run_id
@@ -153,6 +156,7 @@ proc findRunSummary(store: Store, runId: string): Option[JsonNode] =
     SELECT r.run_id, r.repo_path, r.status, r.created_at, r.updated_at,
       COALESCE(e.latest_event_at, r.updated_at) AS latest_event_at,
       COALESCE(b.bead_count, 0) AS bead_count,
+      COALESCE(b.active_bead_count, 0) AS active_bead_count,
       COALESCE(a.agent_count, 0) AS agent_count,
       COALESCE(e.event_count, 0) AS event_count,
       COALESCE(e.latest_seq, 0) AS latest_seq
@@ -302,7 +306,9 @@ proc listRuns(ctx: Context) {.gcsafe.} =
   for row in store.db.iterate(
     """
     WITH bead_counts AS (
-      SELECT run_id, COUNT(*) AS bead_count
+      SELECT run_id,
+        COUNT(*) AS bead_count,
+        SUM(CASE WHEN status = 'closed' THEN 0 ELSE 1 END) AS active_bead_count
       FROM beads
       GROUP BY run_id
     ),
@@ -320,6 +326,7 @@ proc listRuns(ctx: Context) {.gcsafe.} =
     SELECT r.run_id, r.repo_path, r.status, r.created_at, r.updated_at,
       COALESCE(e.latest_event_at, r.updated_at) AS latest_event_at,
       COALESCE(b.bead_count, 0) AS bead_count,
+      COALESCE(b.active_bead_count, 0) AS active_bead_count,
       COALESCE(a.agent_count, 0) AS agent_count,
       COALESCE(e.event_count, 0) AS event_count,
       COALESCE(e.latest_seq, 0) AS latest_seq

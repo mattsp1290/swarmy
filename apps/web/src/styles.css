@@ -81,7 +81,7 @@ h1 {
 
 .run-row {
   width: 100%;
-  min-height: 4.75rem;
+  min-height: 5.75rem;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -106,6 +106,13 @@ h1 {
   box-shadow: inset 3px 0 0 #2d6e57;
 }
 
+.run-timing {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 .run-main,
 .run-meta,
 .bead-row div,
@@ -124,6 +131,7 @@ h1 {
 }
 
 .run-main small,
+.run-timing small,
 .detail-header p,
 .status-strip,
 .state-block,

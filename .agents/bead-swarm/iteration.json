@@ -1,0 +1,11 @@
+{
+  "iteration": 26,
+  "branch": "bead-swarm/iteration-26-e2e-first-milestone-smoke",
+  "slug": "e2e-first-milestone-smoke",
+  "main_branch": "main",
+  "main_branch_source": "default",
+  "selected_beads": ["swarmy-e24"],
+  "beads_done_pending_close": [],
+  "beads_blocked": [],
+  "beads_partial": []
+}

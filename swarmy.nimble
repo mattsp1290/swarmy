@@ -1,4 +1,5 @@
 # Package
+import std/[os, strutils]
 
 version       = "0.1.0"
 author        = "swarmy contributors"
@@ -12,6 +13,11 @@ bin           = @["swarmy"]
 requires "nim >= 2.2.4"
 
 # Tasks
+
+task test, "Run Nim tests":
+  for file in listFiles("tests"):
+    if file.startsWith("tests" / "test_") and file.endsWith(".nim"):
+      exec "nim c -r --path:src --hints:off --verbosity:0 " & file
 
 task buildAll, "Build the Nim backend and Svelte frontend":
   exec "nimble build"

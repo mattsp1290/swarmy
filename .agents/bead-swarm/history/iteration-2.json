@@ -1,0 +1,46 @@
+{
+  "schema_version": "bead-swarm-history-v1",
+  "iteration": 2,
+  "branch": "bead-swarm/iteration-2-establish-thin-binary-boundaries",
+  "slug": "establish-thin-binary-boundaries",
+  "main_branch": "main",
+  "main_branch_source": "default",
+  "selected_beads": ["swarmy-ami"],
+  "beads_done": ["swarmy-ami"],
+  "beads_blocked": [],
+  "beads_partial": [],
+  "merge_target": "main",
+  "validation": [
+    "nimble test: pass",
+    "nimble build: pass",
+    "./swarmy --version: pass",
+    "./swarmy serve: pass",
+    "./swarmy mcp: pass",
+    "npm ci: pass",
+    "npm run build --workspace apps/web: pass",
+    "npm run build: pass",
+    "nimble buildAll: pass",
+    "git diff --check: pass",
+    "nim check --path:src src/swarmy.nim: pass",
+    "nim check --path:src tests/test_cli_dispatch.nim: pass"
+  ],
+  "review_artifacts_local_only": true,
+  "review_blocker_summary": [],
+  "reviews": [
+    {
+      "reviewer": "cli-dispatch-correctness",
+      "verdict": "APPROVE",
+      "artifact": "reviews/bead-swarm-iteration-2-establish-thin-binary-boundaries-2026-06-24/cli-dispatch-correctness/00-overview.md",
+      "critical_count": 0,
+      "important_count": 0
+    },
+    {
+      "reviewer": "nim-boundary-maintainability",
+      "verdict": "APPROVE",
+      "artifact": "reviews/bead-swarm-iteration-2-establish-thin-binary-boundaries-2026-06-24/nim-boundary-maintainability/00-overview.md",
+      "critical_count": 0,
+      "important_count": 0
+    }
+  ],
+  "status": "complete"
+}

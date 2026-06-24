@@ -278,6 +278,25 @@ suite "cli dispatch":
       finally:
         store.close()
 
+  test "stage command rejects invalid stages as argument errors":
+    withTempRepo proc(repo, dbPath: string) =
+      let result = run(@[
+        "stage",
+        "--repo", repo,
+        "--event-id", "stage-event-1",
+        "--bead", "swarmy-2a5",
+        "--stage", "legacy-stage"
+      ])
+
+      check result.exitCode == 2
+      check "unknown stage" in result.error
+
+      var store = initializeStore(dbPath)
+      try:
+        check store.scalarInt("SELECT COUNT(*) FROM events") == 0
+      finally:
+        store.close()
+
   test "generic event rejects reserved event types":
     withTempRepo proc(repo, dbPath: string) =
       let result = run(@[

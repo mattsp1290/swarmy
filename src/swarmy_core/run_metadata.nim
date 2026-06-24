@@ -15,6 +15,7 @@ type
     createdAt*: string
     dbPath*: string
     configPath*: string
+    dbPathTrusted*: bool
 
   InitResult* = object
     metadata*: RunMetadata
@@ -55,15 +56,43 @@ proc assertSafeMetadataFile(path: string) =
   if dirExists(path):
     raise newException(ValueError, "metadata path is a directory: " & path)
 
-proc canonicalDbPath(repoPath: string, dbPath: Option[string]): string =
+proc canonicalPossiblyMissingPath(path: string): string =
+  let absolute = absolutePath(path)
+  var dir = parentDir(absolute)
+  var missingParts: seq[string]
+  while dir.len > 0 and not dirExists(dir):
+    missingParts.insert(extractFilename(dir), 0)
+    let nextDir = parentDir(dir)
+    if nextDir == dir:
+      break
+    dir = nextDir
+
+  var canonicalParent = if dir.len > 0 and dirExists(dir):
+    expandFilename(dir)
+  else:
+    normalizedPath(dir)
+
+  for part in missingParts:
+    canonicalParent = canonicalParent / part
+
+  normalizedPath(canonicalParent / extractFilename(absolute))
+
+proc canonicalDbPath*(repoPath: string, dbPath: Option[string]): string =
   if dbPath.isNone:
-    return defaultDbPath(repoPath)
+    let canonical = defaultDbPath(repoPath)
+    if symlinkExists(canonical):
+      raise newException(ValueError, "db path must not be a symlink: " & canonical)
+    return canonical
 
   let raw = dbPath.get
-  if raw.isAbsolute:
-    normalizedPath(raw)
+  let canonical = if raw.isAbsolute:
+    canonicalPossiblyMissingPath(raw)
   else:
-    normalizedPath(absolutePath(raw, repoPath))
+    canonicalPossiblyMissingPath(absolutePath(raw, repoPath))
+
+  if symlinkExists(canonical):
+    raise newException(ValueError, "db path must not be a symlink: " & canonical)
+  canonical
 
 proc newRunId*(): string =
   randomize()
@@ -80,7 +109,8 @@ proc newRunMetadata*(repoPath: string, dbPath: Option[string] = none(string)): R
     repoPath: canonical,
     createdAt: now().utc.format("yyyy-MM-dd'T'HH:mm:ss'Z'"),
     dbPath: canonicalDbPath(canonical, dbPath),
-    configPath: defaultConfigPath(canonical)
+    configPath: defaultConfigPath(canonical),
+    dbPathTrusted: dbPath.isSome
   )
 
 proc toJson*(metadata: RunMetadata): JsonNode =
@@ -90,21 +120,54 @@ proc toJson*(metadata: RunMetadata): JsonNode =
     "repo_path": metadata.repoPath,
     "created_at": metadata.createdAt,
     "db_path": metadata.dbPath,
-    "config_path": metadata.configPath
+    "config_path": metadata.configPath,
+    "db_path_trusted": metadata.dbPathTrusted
   }
 
 proc fromJson*(node: JsonNode): RunMetadata =
+  let repoPath = canonicalRepoPath(node["repo_path"].getStr)
+  let dbPath = canonicalDbPath(repoPath, some(node["db_path"].getStr))
+  let trustedExternalDb = node.hasKey("db_path_trusted") and
+    node["db_path_trusted"].kind == JBool and
+    node["db_path_trusted"].getBool
+  if dbPath != defaultDbPath(repoPath) and not trustedExternalDb:
+    raise newException(
+      ValueError,
+      "metadata db_path outside repo-local default requires db_path_trusted"
+    )
+
   RunMetadata(
     schemaVersion: node["schema_version"].getInt,
     runId: node["run_id"].getStr,
-    repoPath: node["repo_path"].getStr,
+    repoPath: repoPath,
     createdAt: node["created_at"].getStr,
-    dbPath: node["db_path"].getStr,
-    configPath: node["config_path"].getStr
+    dbPath: dbPath,
+    configPath: defaultConfigPath(repoPath),
+    dbPathTrusted: trustedExternalDb
   )
 
+proc readFileNoFollow(path: string): string =
+  when defined(posix) and declared(O_NOFOLLOW):
+    let fd = posix.open(path.cstring, O_RDONLY or O_NOFOLLOW)
+    if fd < 0:
+      raise newException(IOError, "cannot open metadata file safely: " & path)
+    try:
+      var buffer: array[4096, char]
+      while true:
+        let readBytes = posix.read(fd, addr buffer[0], buffer.len)
+        if readBytes < 0:
+          raise newException(IOError, "cannot read metadata file: " & path)
+        if readBytes == 0:
+          break
+        result.add(buffer[0 ..< readBytes])
+    finally:
+      discard posix.close(fd)
+  else:
+    assertSafeMetadataFile(path)
+    readFile(path)
+
 proc readRunMetadata*(path: string): RunMetadata =
-  fromJson(parseFile(path))
+  fromJson(parseJson(readFileNoFollow(path)))
 
 proc writeRunMetadata*(path: string, metadata: RunMetadata) =
   writeFile(path, metadata.toJson.pretty & "\n")

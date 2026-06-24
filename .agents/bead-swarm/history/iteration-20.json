@@ -1,0 +1,50 @@
+{
+  "schema_version": "bead-swarm-history-v1",
+  "iteration": 20,
+  "branch": "bead-swarm/iteration-20-path-mcp-hardening",
+  "slug": "path-mcp-hardening",
+  "main_branch": "main",
+  "main_branch_source": "default",
+  "selected_beads": ["swarmy-el7"],
+  "beads_done": ["swarmy-el7"],
+  "beads_blocked": [],
+  "beads_partial": [],
+  "merge_target": "main",
+  "validation": [
+    "nim c -r --path:src --hints:off --verbosity:0 tests/test_run_metadata.nim: pass",
+    "nim c -r --path:src --hints:off --verbosity:0 tests/test_mcp_stdio.nim: pass",
+    "nim c -r --path:src --hints:off --verbosity:0 tests/test_cli_dispatch.nim: pass",
+    "nim c -r --path:src --hints:off --verbosity:0 tests/test_diagnostics.nim: pass",
+    "nimble test: pass",
+    "nimble build: pass",
+    "npm run build --workspace apps/web: pass",
+    "tests/smoke_serve.sh: pass",
+    "git diff --check: pass"
+  ],
+  "review_artifacts_local_only": true,
+  "review_blocker_summary": [
+    "Hopper requested treating repo-local run metadata as untrusted for external DB paths; resolved with db_path_trusted metadata and rejection of crafted external db_path values",
+    "Hopper requested stronger symlink handling around metadata reads; resolved with no-follow metadata file reads where supported plus persisted DB path constraints",
+    "Lamport requested redaction for JSON-RPC errors, not just tool payloads; resolved by applying diagnostic redaction in rpcError",
+    "Lamport requested explicit MCP string argument validation; resolved with required and optional string type checks and typed invalid_arguments errors",
+    "Lamport requested object-only payload JSON or relaxed docs; resolved by enforcing JSON object payloads and adding CLI/MCP coverage",
+    "Lamport requested broader secret marker coverage; resolved with common key/value and JSON key redaction patterns"
+  ],
+  "reviews": [
+    {
+      "reviewer": "Hopper",
+      "verdict": "APPROVE after fixes",
+      "critical_count": 0,
+      "important_count": 2,
+      "moderate_count": 0
+    },
+    {
+      "reviewer": "Lamport",
+      "verdict": "APPROVE after fixes",
+      "critical_count": 0,
+      "important_count": 2,
+      "moderate_count": 2
+    }
+  ],
+  "status": "complete"
+}

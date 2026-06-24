@@ -59,6 +59,26 @@ export type RunDetail = RunSummary & {
   errors?: RunError[];
 };
 
+export type RunEvent = {
+  event_id: string;
+  seq: number;
+  occurred_at: string;
+  source: string;
+  event_type: string;
+  bead_id: string | null;
+  stage: string | null;
+  agent: { id: string; name: string; kind: string } | null;
+  payload?: unknown;
+};
+
+export type RunEventsPage = {
+  run_id: string;
+  events: RunEvent[];
+  next_cursor: number;
+  has_more: boolean;
+  latest_seq: number;
+};
+
 const authTokenStorageKey = 'swarmy.authToken';
 
 /**
@@ -202,4 +222,61 @@ export async function fetchRunDetail(runId: string): Promise<RunDetail> {
   }
 
   return (await response.json()) as RunDetail;
+}
+
+/**
+ * Fetch a page of run-scoped events using the cursor endpoint. `after` is the
+ * exclusive seq cursor (events with seq > after are returned, ascending).
+ */
+export async function fetchRunEvents(
+  runId: string,
+  after = 0,
+  limit?: number
+): Promise<RunEventsPage> {
+  let url = `/api/runs/${encodeURIComponent(runId)}/events?after=${after}`;
+  if (limit !== undefined) {
+    url += `&limit=${limit}`;
+  }
+
+  const response = await fetch(url, {
+    headers: jsonHeaders()
+  });
+  if (!response.ok) {
+    const message =
+      response.status === 401
+        ? 'Local token required or rejected (401).'
+        : `Run events request failed: ${response.status}`;
+    throw new ApiError(message, response.status, response.status === 401);
+  }
+
+  return (await response.json()) as RunEventsPage;
+}
+
+/**
+ * Pure helper: compute the `after` cursor to fetch roughly the last
+ * `windowSize` events given the run's latest seq. Guards against NaN/negative
+ * latestSeq by clamping to 0.
+ */
+export function recentEventsCursor(latestSeq: number, windowSize: number): number {
+  if (!Number.isFinite(latestSeq) || latestSeq < 0) {
+    return 0;
+  }
+  return Math.max(0, latestSeq - windowSize);
+}
+
+/** Pure helper: true when an event marks a bead entering the blocked stage. */
+export function isBlockedEvent(e: RunEvent): boolean {
+  return e.stage === 'blocked';
+}
+
+/**
+ * Pure helper: human label for the source agent of an event. Falls back to the
+ * event `source` string when no agent is attached.
+ */
+export function eventActor(e: RunEvent): string {
+  return e.agent
+    ? e.agent.kind
+      ? `${e.agent.name} / ${e.agent.kind}`
+      : e.agent.name
+    : e.source;
 }

@@ -67,22 +67,57 @@ const RUN_DETAIL = {
   errors: []
 };
 
+const CODING_EVENT = {
+  event_id: 'evt-coding',
+  seq: 3,
+  occurred_at: '2026-06-24T10:04:00Z',
+  source: 'orchestrator',
+  event_type: 'stage.changed',
+  bead_id: 'swarmy-code-01',
+  stage: 'coding',
+  agent: { id: 'a1', name: 'coder-agent', kind: 'coding' },
+  payload: {}
+};
+
+const BLOCKED_EVENT = {
+  event_id: 'evt-blocked',
+  seq: 4,
+  occurred_at: '2026-06-24T10:05:00Z',
+  source: 'orchestrator',
+  event_type: 'stage.changed',
+  bead_id: 'swarmy-review-02',
+  stage: 'blocked',
+  agent: { id: 'a2', name: 'review-agent', kind: 'review' },
+  payload: {}
+};
+
+const RUN_EVENTS_PAGE = {
+  run_id: RUN_ID,
+  events: [CODING_EVENT, BLOCKED_EVENT],
+  next_cursor: 4,
+  has_more: false,
+  latest_seq: 4
+};
+
 const json = (body: unknown) => ({
   status: 200,
   contentType: 'application/json',
   body: JSON.stringify(body)
 });
 
-/** Stub /api/runs (list) and /api/runs/<id> (detail) with the fixtures. */
+// Stub /api/runs (list), /api/runs/<id> (detail) and /api/runs/<id>/events
+// (timeline). Playwright evaluates routes in reverse registration order
+// (last-registered wins), and the detail glob also matches the events URL, so
+// the events route is registered LAST to take precedence for that request.
 async function stubHappyApi(page: Page): Promise<void> {
-  // The two globs are non-overlapping, so registration order is irrelevant:
-  // `**/api/runs` matches only the bare list path, while `**/api/runs/*`
-  // requires a trailing segment and matches only the detail path.
+  await page.route('**/api/runs', (route) =>
+    route.fulfill(json({ source_repo: '/Users/dev/git/swarmy', runs: [RUN_SUMMARY] }))
+  );
   await page.route('**/api/runs/*', (route) =>
     route.fulfill(json(RUN_DETAIL))
   );
-  await page.route('**/api/runs', (route) =>
-    route.fulfill(json({ source_repo: '/Users/dev/git/swarmy', runs: [RUN_SUMMARY] }))
+  await page.route('**/api/runs/*/events*', (route) =>
+    route.fulfill(json(RUN_EVENTS_PAGE))
   );
 }
 
@@ -111,6 +146,23 @@ test('renders coding and review beads from fixture API data', async ({ page }) =
   // The coding bead must NOT appear in the review column and vice versa.
   await expect(reviewColumn).not.toContainText(CODING_BEAD.id);
   await expect(codingColumn).not.toContainText(REVIEW_BEAD.id);
+
+  // The Activity band renders the recent events from the cursor endpoint.
+  const activityBand = page.locator('section.detail-band[aria-label="Activity"]');
+  await expect(activityBand).toBeVisible();
+  const timelineRows = activityBand.locator('.timeline-row');
+  await expect(timelineRows).toHaveCount(2);
+  await expect(activityBand).toContainText(CODING_EVENT.bead_id);
+  await expect(activityBand).toContainText(BLOCKED_EVENT.agent.name);
+
+  // The blocked event is surfaced in the Failures band with its source agent
+  // and the distinct blocked/failure highlight class.
+  const failuresBand = page.locator('section.detail-band[aria-label="Failures"]');
+  await expect(failuresBand).toBeVisible();
+  const failureRow = failuresBand.locator('.failure-row.blocked-row');
+  await expect(failureRow).toHaveCount(1);
+  await expect(failureRow).toContainText(BLOCKED_EVENT.agent.name);
+  await expect(failureRow).toContainText('blocked');
 });
 
 test('surfaces the auth panel on a 401 from the API', async ({ page }) => {

@@ -1,4 +1,4 @@
-import std/[json, options, os, osproc, streams, strutils]
+import std/[json, options, os, osproc, strutils, times]
 
 const DefaultBdTimeoutMs* = 5000
 
@@ -62,33 +62,75 @@ proc classifyFailure(command: seq[string], output: string, exitCode: int): BdSna
   let lowered = output.toLowerAscii()
   if "not a beads" in lowered or "no beads" in lowered or "no .beads" in lowered:
     newBdError(bdNotRepository, command, output, exitCode)
+  elif command.len >= 1 and command[0] == "show" and
+      ("no issue found" in lowered or "no issues found" in lowered):
+    newBdError(bdDeletedOrRenamed, command, output, exitCode)
   else:
     newBdError(bdCommandFailed, command, output, exitCode)
 
-proc runBdCommand*(repoPath: string, args: seq[string], timeoutMs: int): BdCommandResult =
+proc isAllowedReadOnlyCommand(args: seq[string]): bool =
+  if args == @["list", "--json"]:
+    return true
+  if args.len == 4 and args[0] == "ready" and args[1] == "--json" and args[2] == "--limit":
+    return true
+  if args.len == 3 and args[0] == "show" and args[2] == "--json":
+    return true
+
+proc tempOutputPath(): string =
+  getTempDir() / ("swarmy-bd-" & $getCurrentProcessId() & "-" & $epochTime() & ".out")
+
+proc runBdCommand(repoPath: string, args: seq[string], timeoutMs: int): BdCommandResult =
+  if not isAllowedReadOnlyCommand(args):
+    raise newBdError(
+      bdCommandFailed,
+      args,
+      "",
+      -1,
+      "bd command is not allowed by the read-only snapshot adapter"
+    )
   if findExe("bd").len == 0:
     raise newBdError(bdMissing, args, "", -1, "bd executable not found")
 
+  let outputPath = tempOutputPath()
   var process: Process
   try:
     process = startProcess(
-      "bd",
+      "sh",
       workingDir = repoPath,
-      args = args,
+      args = @["-c", "out=\"$1\"; shift; exec bd \"$@\" > \"$out\" 2>&1", "swarmy-bd", outputPath] & args,
       options = {poUsePath, poStdErrToStdOut}
     )
   except OSError as error:
     raise newBdError(bdMissing, args, error.msg)
 
-  result.exitCode = process.waitForExit(timeoutMs)
-  if process.running():
-    process.kill()
-    discard process.waitForExit(1000)
-    result.timedOut = true
-    result.exitCode = -1
+  try:
+    result.exitCode = process.waitForExit(timeoutMs)
+    if process.running():
+      process.kill()
+      discard process.waitForExit(1000)
+      result.timedOut = true
+      result.exitCode = -1
 
-  result.output = process.outputStream.readAll()
-  process.close()
+    if fileExists(outputPath):
+      result.output = readFile(outputPath)
+  finally:
+    process.close()
+    if fileExists(outputPath):
+      removeFile(outputPath)
+
+proc optionalString(node: JsonNode, key: string, command: seq[string], default = ""): string =
+  if not node.hasKey(key) or node[key].kind == JNull:
+    return default
+  if node[key].kind != JString:
+    raise newBdError(bdMalformedOutput, command, $node, message = "invalid bead field: " & key)
+  node[key].getStr
+
+proc optionalInt(node: JsonNode, key: string, command: seq[string], default = 0): int =
+  if not node.hasKey(key) or node[key].kind == JNull:
+    return default
+  if node[key].kind != JInt:
+    raise newBdError(bdMalformedOutput, command, $node, message = "invalid bead field: " & key)
+  node[key].getInt
 
 proc parseSnapshot(node: JsonNode, command: seq[string]): BeadSnapshot =
   if node.kind != JObject:
@@ -106,19 +148,24 @@ proc parseSnapshot(node: JsonNode, command: seq[string]): BeadSnapshot =
   result = BeadSnapshot(
     id: node["id"].getStr,
     title: node["title"].getStr,
-    description: node{"description"}.getStr(""),
-    notes: node{"notes"}.getStr(""),
+    description: node.optionalString("description", command),
+    notes: node.optionalString("notes", command),
     status: node["status"].getStr,
-    priority: node{"priority"}.getInt(0),
-    issueType: node{"issue_type"}.getStr(""),
-    updatedAt: node{"updated_at"}.getStr(""),
+    priority: node.optionalInt("priority", command),
+    issueType: node.optionalString("issue_type", command),
+    updatedAt: node.optionalString("updated_at", command),
     closedAt: none(string),
     labels: @[],
     rawJson: node
   )
 
-  if node.hasKey("closed_at") and node["closed_at"].kind != JNull:
-    result.closedAt = some(node["closed_at"].getStr)
+  if node.hasKey("closed_at"):
+    if node["closed_at"].kind == JNull:
+      discard
+    elif node["closed_at"].kind == JString:
+      result.closedAt = some(node["closed_at"].getStr)
+    else:
+      raise newBdError(bdMalformedOutput, command, $node, message = "invalid bead field: closed_at")
 
   if node.hasKey("labels"):
     if node["labels"].kind != JArray:

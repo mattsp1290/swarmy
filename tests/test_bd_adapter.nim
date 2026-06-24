@@ -118,6 +118,16 @@ suite "bd adapter":
     except BdSnapshotError as error:
       check error.kind == bdDeletedOrRenamed
 
+  test "maps real missing bd show failure to deleted or renamed":
+    setFake("""{"error":"no issues found matching the provided IDs"}""", exitCode = 1)
+
+    try:
+      discard readBead("/repo", "swarmy-missing", fakeRunner, timeoutMs = 1234)
+      fail()
+    except BdSnapshotError as error:
+      check error.kind == bdDeletedOrRenamed
+      check error.command == @["show", "swarmy-missing", "--json"]
+
   test "rejects stale show snapshots when caller has a newer timestamp":
     setFake(fixture(updatedAt = "2026-06-24T00:00:00Z"))
 
@@ -132,3 +142,20 @@ suite "bd adapter":
       fail()
     except BdSnapshotError as error:
       check error.kind == bdStaleSnapshot
+
+  test "rejects wrong-typed optional scalar fields":
+    for output in [
+      """[{"id":"swarmy-3z4","title":"Title","status":"open","priority":"high"}]""",
+      """[{"id":"swarmy-3z4","title":"Title","status":"open","updated_at":123}]""",
+      """[{"id":"swarmy-3z4","title":"Title","status":"open","closed_at":123}]""",
+      """[{"id":"swarmy-3z4","title":"Title","status":"open","issue_type":42}]""",
+      """[{"id":"swarmy-3z4","title":"Title","status":"open","description":42}]""",
+      """[{"id":"swarmy-3z4","title":"Title","status":"open","notes":42}]""",
+    ]:
+      setFake(output)
+
+      try:
+        discard readListedBeads("/repo", fakeRunner, timeoutMs = 1234)
+        fail()
+      except BdSnapshotError as error:
+        check error.kind == bdMalformedOutput

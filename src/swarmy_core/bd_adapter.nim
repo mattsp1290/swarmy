@@ -205,6 +205,25 @@ proc runReadOnlyBd(
 
   parseSnapshotArray(commandResult.output, args)
 
+proc isEpic*(bead: BeadSnapshot): bool =
+  ## A bead is an epic (planning-only, skipped at loop selection) when its
+  ## canonical issue type is `epic`. Compared case-insensitively because `bd`
+  ## emits the type verbatim from the tracker.
+  bead.issueType.strip().toLowerAscii() == "epic"
+
+proc classifyReady*(
+  beads: openArray[BeadSnapshot]
+): tuple[epics, concrete: seq[BeadSnapshot]] =
+  ## Split a set of ready beads into planning-only epics and concrete actionable
+  ## work (tasks/features/chores/bugs). This is the single shared classifier used
+  ## by both `swarmy preflight` (epic/task mix check) and `swarmy summary`
+  ## (recommended-next selection); neither should re-implement it.
+  for bead in beads:
+    if bead.isEpic:
+      result.epics.add bead
+    else:
+      result.concrete.add bead
+
 proc readReadyBeads*(
   repoPath: string,
   runner: BdCommandRunner = runBdCommand,

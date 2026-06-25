@@ -8,6 +8,7 @@ import swarmy_core/events
 import swarmy_core/logging
 import swarmy_core/persistence
 import swarmy_core/run_metadata
+import swarmy_cli/summary
 
 type ServerConfig* = object
   address*: string
@@ -937,6 +938,51 @@ proc runEvents(ctx: Context) {.gcsafe.} =
     "latest_seq": latestSeq
   })
 
+proc runHealth(ctx: Context) {.gcsafe.} =
+  ## Surfaces review/run health for the configured run: the compact summary
+  ## manifest (reusing task 04's generator — no re-derivation here) plus the
+  ## per-iteration review verdicts and degraded-review signals.
+  if not validateApiRequest(ctx):
+    return
+
+  let runId = ctx.param("run_id")
+  let repo = currentRepoRoot()
+
+  # Health is derived for the configured repo's current run. Serving it for any
+  # other run id in the store would return a manifest whose run_id contradicts
+  # the requested one, so restrict it to the live run recorded in metadata.
+  let metadata = readMetadataIfPresent(repo)
+  if metadata.isNone or metadata.get.runId != runId:
+    logApiRequest(ctx, runId, 404)
+    ctx.status(404).json(%*{"error": "run not found", "run_id": runId})
+    return
+
+  let maybeStore = openConfiguredStore()
+  if maybeStore.isNone:
+    logApiRequest(ctx, runId, 404)
+    ctx.status(404).json(%*{"error": "run not found", "run_id": runId})
+    return
+
+  var store = maybeStore.get
+  defer: store.close()
+
+  if store.findRunSummary(runId).isNone:
+    logApiRequest(ctx, runId, 404)
+    ctx.status(404).json(%*{"error": "run not found", "run_id": runId})
+    return
+  var manifestJson: JsonNode
+  var iterationsJson: JsonNode
+  {.cast(gcsafe).}:
+    manifestJson = summary.generateNow(repo).toJson
+    iterationsJson = summary.iterationsJson(repo)
+
+  logApiRequest(ctx, runId, 200)
+  ctx.json(%*{
+    "run_id": runId,
+    "summary": manifestJson,
+    "iterations": iterationsJson
+  })
+
 proc registerRoutes*(
   staticDir: string,
   repoPath = ".",
@@ -956,6 +1002,7 @@ proc registerRoutes*(
   Route.get("/api/runs/:run_id/agents/:agent_id", agentDetail)
   Route.get("/api/runs/:run_id/stages", runStages)
   Route.get("/api/runs/:run_id/events", runEvents)
+  Route.get("/api/runs/:run_id/health", runHealth)
   Route.get("/api/runs/:run_id", runDetail)
   Route.get("/", appIndex)
   Route.get("/assets/:file", appAsset)

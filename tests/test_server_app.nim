@@ -688,3 +688,62 @@ suite "server app":
       )
       check missing.response.code == 404
       check parseJson(missing.response.body)["run_id"].getStr == "missing-run"
+
+  test "surfaces review/run health from the summary generator and history":
+    withTempRepoAndDist proc(repo, dist, dbPath, runId: string) =
+      var store = initializeStore(dbPath)
+      try:
+        store.insertRun(
+          runId,
+          repo,
+          "active",
+          "2026-06-24T00:00:00Z",
+          "2026-06-24T00:00:02Z"
+        )
+      finally:
+        store.close()
+
+      let historyDir = repo / ".agents/bead-swarm/history"
+      createDir(historyDir)
+      writeFile(historyDir / "iteration-1.json", """
+        {"iteration":1,"branch":"bead-swarm/iteration-1-a","main_branch":"main",
+         "merge_target":"main","status":"blocked","beads_done":["a-1"],
+         "validation":["nimble test: failed"],"findings_fixed_re_reviewed":false,
+         "review_blocker_summary":["reviewer requested changes"],
+         "reviews":[{"reviewer":"scout","verdict":"REQUEST_CHANGES"}]}
+      """)
+      writeFile(historyDir / "iteration-2.json", """
+        {"iteration":2,"branch":"bead-swarm/iteration-2-b","main_branch":"main",
+         "merge_target":"main","status":"complete","beads_done":["a-2"],
+         "execution_mode":"parent-degraded","degraded_reason":"single docs change",
+         "validation":["nimble test: pass"],"findings_fixed_re_reviewed":true,
+         "reviews":[{"reviewer":"redowl","verdict":"APPROVE"},
+                    {"reviewer":"scout","verdict":"APPROVE"}]}
+      """)
+
+      server_app.registerRoutes(dist, repo)
+
+      let health = dispatchGet("/api/runs/" & runId & "/health")
+      check health.response.code == 200
+      let payload = parseJson(health.response.body)
+      check payload["run_id"].getStr == runId
+
+      # Summary reuses task 04's generator: cumulative done, last-iteration view.
+      let summaryNode = payload["summary"]
+      check summaryNode["last_iteration"].getInt == 2
+      check summaryNode["beads_done"].to(seq[string]) == @["a-1", "a-2"]
+      check summaryNode["reviews"][0]["verdict"].getStr == "APPROVE"
+      check summaryNode["execution_mode"].getStr == "parent-degraded"
+
+      # Per-iteration review verdicts + the fixed->re-reviewed->approved signal.
+      let iterations = payload["iterations"]
+      check iterations.len == 2
+      check iterations[0]["iteration"].getInt == 1
+      check iterations[0]["reviews"][0]["verdict"].getStr == "REQUEST_CHANGES"
+      check iterations[0]["validation_passed"].getBool == false
+      check iterations[0]["findings_fixed_re_reviewed"].getBool == false
+      check iterations[1]["findings_fixed_re_reviewed"].getBool == true
+      check iterations[1]["validation_passed"].getBool == true
+
+      let missingHealth = dispatchGet("/api/runs/missing-run/health")
+      check missingHealth.response.code == 404

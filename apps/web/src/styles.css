@@ -560,3 +560,46 @@ h1 {
     text-align: left;
   }
 }
+
+/* Review/run-health tile (review-health band). */
+.health-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 0.5rem;
+}
+
+.health-cell {
+  border: 1px solid #c7d2d7;
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 0.65rem;
+}
+
+.health-cell dt {
+  color: #52656e;
+  font-size: 0.75rem;
+}
+
+.health-cell dd {
+  margin-top: 0.25rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.health-badge {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.health-badge-warn {
+  background: #fde7c7;
+  color: #8a4b00;
+}
+
+.health-badge-degraded {
+  background: #f3d6dc;
+  color: #7a1f33;
+}

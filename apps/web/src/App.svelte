@@ -4,15 +4,20 @@
     ApiError,
     fetchRunDetail,
     fetchRunEvents,
+    fetchRunHealth,
     fetchRuns,
     hasStoredToken,
     recentEventsCursor,
     mergeRecentEvents,
     isBlockedEvent,
     eventActor,
+    lastReviewVerdicts,
+    hasOutstandingRequestChanges,
+    degradedReviewState,
     type BeadSummary,
     type RunDetail,
     type RunEvent,
+    type RunHealth,
     type RunSummary
   } from './api';
 
@@ -44,6 +49,7 @@
   let eventsError = '';
   let eventsCursor = 0;
   let pollFailed = false;
+  let runHealth: RunHealth | null = null;
 
   const repoName = (path: string) => {
     const normalized = path.replace(/\\/g, '/');
@@ -120,6 +126,7 @@
     recentEvents = [];
     eventsError = '';
     loadingEvents = true;
+    runHealth = null;
 
     try {
       const detail = await fetchRunDetail(runId);
@@ -165,6 +172,17 @@
       if (detailRequest === requestId) {
         loadingEvents = false;
       }
+    }
+
+    // Review/run health is best-effort: a failure here must never blank the
+    // detail pane, so it is fetched last and only updates its own state.
+    try {
+      const health = await fetchRunHealth(runId);
+      if (detailRequest === requestId && selectedRunId === runId) {
+        runHealth = health;
+      }
+    } catch {
+      // Leave runHealth null; the tile renders a neutral placeholder.
     }
   };
 
@@ -235,6 +253,13 @@
       ) {
         recentEvents = mergeRecentEvents(recentEvents, page.events, RECENT_EVENTS_CAP);
         eventsCursor = page.latest_seq;
+      }
+
+      // Health refresh replaces populated state with populated state only, so
+      // the tile never collapses mid-poll (same no-layout-shift contract).
+      const health = await fetchRunHealth(runId);
+      if (detailRequest === requestId && selectedRunId === runId) {
+        runHealth = health;
       }
     } catch {
       pollFailed = true;
@@ -354,6 +379,59 @@
         <span>{selectedRun.status}</span>
         <span>{activityLabel(selectedRun)}</span>
       </div>
+
+      <section class="detail-band review-health" aria-label="Review health" data-testid="review-health">
+        <header>
+          <h3>Review health</h3>
+          {#if runHealth}
+            <span data-testid="review-iteration">
+              {runHealth.summary.last_iteration > 0
+                ? `Iteration ${runHealth.summary.last_iteration}`
+                : 'No iterations'}
+            </span>
+          {:else}
+            <span>—</span>
+          {/if}
+        </header>
+        {#if !runHealth}
+          <div class="empty-row">No review history</div>
+        {:else}
+          <dl class="health-grid">
+            <div class="health-cell">
+              <dt>Last verdict</dt>
+              <dd data-testid="review-verdict">
+                {lastReviewVerdicts(runHealth).length > 0
+                  ? lastReviewVerdicts(runHealth).join(', ')
+                  : 'none'}
+              </dd>
+            </div>
+            <div class="health-cell">
+              <dt>Outstanding</dt>
+              <dd>
+                {#if hasOutstandingRequestChanges(runHealth)}
+                  <span class="health-badge health-badge-warn" data-testid="review-outstanding">
+                    REQUEST_CHANGES
+                  </span>
+                {:else}
+                  <span data-testid="review-clear">clear</span>
+                {/if}
+              </dd>
+            </div>
+            <div class="health-cell">
+              <dt>Degraded</dt>
+              <dd>
+                {#if degradedReviewState(runHealth)}
+                  <span class="health-badge health-badge-degraded" data-testid="review-degraded">
+                    {degradedReviewState(runHealth)}
+                  </span>
+                {:else}
+                  <span>no</span>
+                {/if}
+              </dd>
+            </div>
+          </dl>
+        {/if}
+      </section>
 
       <div class="stage-grid" aria-label="Bead stages">
         {#each stages as stage}

@@ -9,6 +9,8 @@
     "build": "nimble build && npm run build --workspace apps/web",
     "build:nim": "nimble build",
     "build:web": "npm run build --workspace apps/web",
+    "test": "npm run test:nim && npm run test:web",
+    "test:all": "npm run test:nim && npm run test:web && npm run test:ui && npm run test:smoke",
     "test:nim": "nimble test",
     "test:web": "npm run test --workspace apps/web",
     "test:ui": "npm run test:ui --workspace apps/web",

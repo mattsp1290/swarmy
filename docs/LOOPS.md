@@ -73,9 +73,16 @@ and the history JSON agree rather than contradict:
   fixes means `findings_fixed_unreviewed`. Note the spelling difference:
   the schema field is `findings_fixed_re_reviewed`, the state name is
   `findings_fixed_unreviewed`.
+- `review_assurance` (string) — the **review**-level assurance: `normal` for an
+  ordinary independent review, or a degraded-review state name (e.g.
+  `local_fallback`, `reviewers_unavailable`) otherwise. This is the canonical
+  signal for whether the *review* was degraded, and is what swarmy's dashboard
+  Review-health tile keys off.
 - `execution_mode` / `degraded_reason` — record *why* an iteration ran in a
-  reduced mode. Ordinary sub-agent orchestration is **not** degraded and should
-  not be recorded as such.
+  reduced **orchestration** mode (e.g. `parent-degraded` = the orchestrator wrote
+  the change directly). This is distinct from a degraded *review*: ordinary
+  sub-agent orchestration is **not** a degraded review and must not be surfaced
+  as one (`review_assurance` stays `normal`).
 
 ## See also
 

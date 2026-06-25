@@ -36,6 +36,7 @@ type
     executionMode: string
     degradedReason: string
     reviewMode: string
+    reviewAssurance: string
     findingsFixedReReviewed: bool
     beadsDone: seq[string]
     beadsBlocked: seq[string]
@@ -139,6 +140,7 @@ proc parseIteration(node: JsonNode): Iteration =
     executionMode: node{"execution_mode"}.getStr(""),
     degradedReason: node{"degraded_reason"}.getStr(""),
     reviewMode: node{"review_mode"}.getStr(""),
+    reviewAssurance: node{"review_assurance"}.getStr(""),
     findingsFixedReReviewed: node{"findings_fixed_re_reviewed"}.getBool(false),
     beadsDone: node.strArray("beads_done"),
     beadsBlocked: node.strArray("beads_blocked"),
@@ -165,13 +167,24 @@ proc readHistory*(historyDir: string): seq[Iteration] =
 
 # --- aggregation ------------------------------------------------------------
 
+proc looksLikeFailure(entry: string): bool =
+  ## True when a free-text `validation` entry reports a failing result. The
+  ## convention is "<check>: <result>" (e.g. "nimble test: failed"). Negated
+  ## phrasings like "no failures" / "0 failures" / "without failures" are NOT
+  ## failures, so they are excluded before the failure markers are checked.
+  let lowered = entry.toLowerAscii()
+  if "no fail" in lowered or "0 fail" in lowered or "zero fail" in lowered or
+     "without fail" in lowered or "not fail" in lowered:
+    return false
+  ": fail" in lowered or "fail:" in lowered or " failed" in lowered or
+    " failing" in lowered or "[fail]" in lowered or lowered.startsWith("fail") or
+    lowered.endsWith("failed")
+
 proc validationPassed(status: string, entries: seq[string]): bool =
   ## Heuristic pass/fail derived from the last iteration's `validation` array
   ## (which is a list of free-text entries, not a boolean) plus its status.
   for entry in entries:
-    let lowered = entry.toLowerAscii()
-    if ": fail" in lowered or "fail:" in lowered or " failed" in lowered or
-       "failure" in lowered:
+    if looksLikeFailure(entry):
       return false
   status != "blocked"
 
@@ -371,14 +384,36 @@ proc storeRunInfo(repo: string): tuple[runId: string, recentErrors: int] =
 
 # --- entry point ------------------------------------------------------------
 
+proc canonicalize(repo: string): string =
+  try: canonicalRepoPath(repo)
+  except CatchableError: repo
+
+proc iterationsToJson(history: seq[Iteration]): JsonNode =
+  ## Pure: per-iteration review verdicts and degraded-review signals. Note
+  ## `review_assurance` is the review-degradation signal (distinct from the
+  ## orchestration-level `execution_mode`).
+  result = newJArray()
+  for it in history:
+    result.add %*{
+      "iteration": it.iteration,
+      "branch": it.branch,
+      "status": it.status,
+      "execution_mode": it.executionMode,
+      "degraded_reason": it.degradedReason,
+      "review_mode": it.reviewMode,
+      "review_assurance": it.reviewAssurance,
+      "findings_fixed_re_reviewed": it.findingsFixedReReviewed,
+      "validation_passed": validationPassed(it.status, it.validation),
+      "reviews": toJsonNode(it.reviews),
+      "review_blocker_summary": it.reviewBlockerSummary
+    }
+
 proc generate*(
   repo, generatedAt: string,
   ready: BeadReader = realReady,
   listed: BeadReader = realListed
 ): Manifest =
-  let canonicalRepo =
-    try: canonicalRepoPath(repo)
-    except CatchableError: repo
+  let canonicalRepo = canonicalize(repo)
   let storeInfo = storeRunInfo(canonicalRepo)
   let history = readHistory(canonicalRepo / HistorySubdir)
   buildManifest(
@@ -392,32 +427,33 @@ proc generate*(
   )
 
 proc generateNow*(repo: string): Manifest =
-  ## Convenience for non-CLI callers (e.g. the HTTP health surface): stamp the
-  ## manifest with the current time using the production bd readers.
+  ## Convenience for non-CLI callers: stamp the manifest with the current time
+  ## using the production bd readers.
   generate(repo, realClock())
 
 proc iterationsJson*(repo: string): JsonNode =
-  ## Per-iteration review verdicts and degraded-review signals derived from the
-  ## history dir, for the HTTP health surface. Derivation stays in this module
-  ## (the single owner of history parsing) so the server does not re-derive it.
-  let canonicalRepo =
-    try: canonicalRepoPath(repo)
-    except CatchableError: repo
+  ## Per-iteration health derived from the history dir. Derivation stays in this
+  ## module (the single owner of history parsing) so callers do not re-derive it.
+  iterationsToJson(readHistory(canonicalize(repo) / HistorySubdir))
+
+proc healthView*(repo: string): tuple[manifest: Manifest, iterations: JsonNode] =
+  ## Single-pass health view for the HTTP surface: parses the history dir ONCE
+  ## and produces both the run-health manifest and the per-iteration array,
+  ## instead of the server calling generateNow + iterationsJson (which would
+  ## parse history twice).
+  let canonicalRepo = canonicalize(repo)
+  let storeInfo = storeRunInfo(canonicalRepo)
   let history = readHistory(canonicalRepo / HistorySubdir)
-  result = newJArray()
-  for it in history:
-    result.add %*{
-      "iteration": it.iteration,
-      "branch": it.branch,
-      "status": it.status,
-      "execution_mode": it.executionMode,
-      "degraded_reason": it.degradedReason,
-      "review_mode": it.reviewMode,
-      "findings_fixed_re_reviewed": it.findingsFixedReReviewed,
-      "validation_passed": validationPassed(it.status, it.validation),
-      "reviews": toJsonNode(it.reviews),
-      "review_blocker_summary": it.reviewBlockerSummary
-    }
+  result.manifest = buildManifest(
+    storeInfo.runId,
+    canonicalRepo,
+    realClock(),
+    history,
+    realReady(canonicalRepo),
+    realListed(canonicalRepo),
+    storeInfo.recentErrors
+  )
+  result.iterations = iterationsToJson(history)
 
 proc run*(
   args: seq[string],

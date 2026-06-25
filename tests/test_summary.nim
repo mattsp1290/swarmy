@@ -108,6 +108,20 @@ suite "swarmy summary":
       check "reviewer requested changes" in risks
       check "bead partially satisfied: p-1" in risks
 
+  test "validation summary is not fooled by negated failure wording":
+    withTempRepo proc(repo: string) =
+      writeIteration(repo, 1, """
+        {"iteration":1,"branch":"bead-swarm/iteration-1-x","main_branch":"main",
+         "merge_target":"main","status":"complete","beads_done":["a-1"],
+         "validation":["all checks pass, no failures observed",
+                       "nimble build: pass"],"reviews":[]}
+      """)
+      let result = summary.run(@["--repo", repo, "--json"],
+        readyWith(@[]), readyWith(@[]), fixedClock)
+      let parsed = parseJson(result.output)
+      # "no failures" must NOT be read as a failing entry.
+      check parsed["latest_validation"]["passed"].getBool == true
+
   test "malformed history file is skipped, not fatal":
     withTempRepo proc(repo: string) =
       writeIteration(repo, 1, """{"iteration":1,"status":"complete","beads_done":["ok-1"]}""")

@@ -111,41 +111,59 @@ proc check(name: string, status: CheckStatus, detail: string): PreflightCheck =
   PreflightCheck(name: name, status: status, detail: detail)
 
 proc resolveMainBranch(repo, requested: string): string =
-  ## `--main` wins; otherwise honor a `.ralph` file's first non-empty single
-  ## token if present (loops sometimes record their base branch there).
+  ## `--main` wins; otherwise honor a `.ralph` file's `main_branch=BRANCH` line
+  ## if present (this is the format the loop tooling and the `/review` skill use).
+  ## A `.ralph` without a parseable `main_branch=` line falls back to the default.
   if requested != DefaultMainBranch:
     return requested
   let ralph = repo / ".ralph"
   if fileExists(ralph):
     try:
       for line in readFile(ralph).splitLines():
-        let token = line.strip()
-        if token.len == 0:
-          continue
-        # Evaluate only the first non-empty line: use it when it is a bare branch
-        # token, otherwise fall through to the default rather than scanning on.
-        if ' ' notin token and ':' notin token:
-          return token
-        break
+        let stripped = line.strip()
+        if stripped.startsWith("main_branch="):
+          let value = stripped["main_branch=".len .. ^1].strip()
+          if value.len > 0:
+            return value
     except CatchableError:
       discard
   requested
 
+proc loopBranchName(refName: string): string =
+  ## The branch name within a full ref, dropping `refs/heads/` or
+  ## `refs/remotes/<remote>/` so the loop-namespace match anchors on real path
+  ## segments (e.g. `feature/ralph/iteration-x` is NOT a loop branch).
+  let name = refName.strip()
+  if name.startsWith("refs/heads/"):
+    return name["refs/heads/".len .. ^1]
+  if name.startsWith("refs/remotes/"):
+    let rest = name["refs/remotes/".len .. ^1]
+    let slash = rest.find('/')
+    if slash >= 0:
+      return rest[slash + 1 .. ^1]
+    return rest
+  name
+
+proc isLoopBranch(branch: string): bool =
+  branch.startsWith("ralph/iteration-") or
+    branch.startsWith("bead-swarm/iteration-") or
+    branch.startsWith("bead-swarm/recovery-")
+
 proc staleLoopBranches(refs: string): seq[string] =
-  ## Branch short-names under the loop namespaces that should be cleaned up
-  ## between runs.
+  ## Loop-namespace branches that should be cleaned up between runs. The match
+  ## anchors on the branch name's leading path segment, so unrelated branches
+  ## like `feature/ralph/iteration-notes` are not flagged. The reported name
+  ## keeps its location (`origin/...` for remotes) for actionable output.
   for raw in refs.splitLines():
     let name = raw.strip()
     if name.len == 0:
       continue
-    let short = name.replace("refs/heads/", "").replace("refs/remotes/", "")
-    if short.startsWith("ralph/iteration-") or
-       short.startsWith("bead-swarm/iteration-") or
-       short.startsWith("bead-swarm/recovery-") or
-       short.contains("/ralph/iteration-") or
-       short.contains("/bead-swarm/iteration-") or
-       short.contains("/bead-swarm/recovery-"):
-      result.add short
+    if isLoopBranch(loopBranchName(name)):
+      let reported =
+        if name.startsWith("refs/heads/"): name["refs/heads/".len .. ^1]
+        elif name.startsWith("refs/remotes/"): name["refs/remotes/".len .. ^1]
+        else: name
+      result.add reported
 
 proc buildChecks*(
   repo: string,

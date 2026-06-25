@@ -133,6 +133,30 @@ suite "swarmy preflight":
       check "[FAIL] stale-branches" in result.output
       check "bead-swarm/iteration-7" in result.output
 
+  test "branches that merely contain a loop path segment are not flagged stale":
+    withTempRepo proc(repo: string) =
+      var cfg = cleanGit()
+      cfg.forEachRef = (0,
+        "refs/heads/main\n" &
+        "refs/heads/feature/ralph/iteration-notes\n" &
+        "refs/heads/docs/bead-swarm/iteration-writeup\n")
+      let result = preflight.run(@["--repo", repo], runnerFor(cfg),
+        readyWith(@[bead("swarmy-1", "task")]))
+      check result.exitCode == 0
+      let checks = buildChecks(repo, "main", runnerFor(cfg),
+        readyWith(@[bead("swarmy-1", "task")]))
+      check statusOf(checks, "stale-branches") == csPass
+
+  test "remote stale loop branch keeps its origin/ prefix in the report":
+    withTempRepo proc(repo: string) =
+      var cfg = cleanGit()
+      cfg.forEachRef = (0,
+        "refs/heads/main\nrefs/remotes/origin/bead-swarm/iteration-4\n")
+      let result = preflight.run(@["--repo", repo], runnerFor(cfg),
+        readyWith(@[bead("swarmy-1", "task")]))
+      check result.exitCode == 1
+      check "origin/bead-swarm/iteration-4" in result.output
+
   test "lock file present fails with exit 1":
     withTempRepo proc(repo: string) =
       writeFile(repo / ".git" / "bead-swarm.lock", "owner-token\n")

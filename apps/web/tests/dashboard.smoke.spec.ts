@@ -118,9 +118,12 @@ const RUN_HEALTH = {
       iteration: 7,
       branch: 'bead-swarm/iteration-7-x',
       status: 'blocked',
+      // execution_mode is a degraded ORCHESTRATION mode, but the degraded-review
+      // label is driven by review_assurance, not this field.
       execution_mode: 'parent-degraded',
-      degraded_reason: 'reviewers unavailable',
+      degraded_reason: 'orchestrator wrote directly',
       review_mode: 'local-fallback',
+      review_assurance: 'local_fallback',
       findings_fixed_re_reviewed: false,
       validation_passed: false,
       reviews: [{ reviewer: 'scout', verdict: 'REQUEST_CHANGES' }],
@@ -302,7 +305,7 @@ test('renders the review-health tile from the health endpoint', async ({ page })
   );
   await expect(page.locator('[data-testid="review-outstanding"]')).toBeVisible();
   await expect(page.locator('[data-testid="review-degraded"]')).toContainText(
-    'parent-degraded'
+    'local_fallback'
   );
 });
 

@@ -92,6 +92,7 @@ export type IterationHealth = {
   execution_mode: string;
   degraded_reason: string;
   review_mode: string;
+  review_assurance: string;
   findings_fixed_re_reviewed: boolean;
   validation_passed: boolean;
   reviews: ReviewVerdict[];
@@ -385,22 +386,23 @@ export function hasOutstandingRequestChanges(h: RunHealth): boolean {
 }
 
 /**
- * Pure helper: a human-readable degraded-review label for the latest iteration,
- * or null when the iteration ran in a normal (non-degraded) mode. Only an
- * `execution_mode` that explicitly signals degradation counts — a non-empty
- * `review_blocker_summary` alone (which appears in normal APPROVE runs too) does
- * not.
+ * Pure helper: the degraded-REVIEW state label for the latest iteration, or null
+ * when the review ran normally. This is derived from the review-assurance signal
+ * (`review_assurance`), NOT from `execution_mode`: a degraded *orchestration*
+ * mode like `parent-degraded` (orchestrator wrote the change directly) is a
+ * normal review and must not be labelled a degraded review — see the guidance in
+ * `BeadSwarmGuidance` and docs/LOOPS.md. A non-`normal` `review_assurance` maps
+ * to one of the canonical degraded-review states (e.g. `local_fallback`,
+ * `reviewers_unavailable`).
  */
 export function degradedReviewState(h: RunHealth): string | null {
   const iteration = latestIterationHealth(h);
   if (!iteration) {
     return null;
   }
-  const mode = (iteration.execution_mode ?? '').toLowerCase();
-  if (mode.includes('degraded')) {
-    return iteration.degraded_reason
-      ? `${iteration.execution_mode}: ${iteration.degraded_reason}`
-      : iteration.execution_mode;
+  const assurance = (iteration.review_assurance ?? '').trim();
+  if (assurance.length > 0 && assurance.toLowerCase() !== 'normal') {
+    return assurance;
   }
   return null;
 }

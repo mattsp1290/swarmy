@@ -254,15 +254,22 @@
         recentEvents = mergeRecentEvents(recentEvents, page.events, RECENT_EVENTS_CAP);
         eventsCursor = page.latest_seq;
       }
+    } catch {
+      pollFailed = true;
+    }
 
-      // Health refresh replaces populated state with populated state only, so
-      // the tile never collapses mid-poll (same no-layout-shift contract).
+    // Health is fetched in its OWN try/catch (mirroring selectRun): the /health
+    // endpoint 404s for any run that is not the live metadata run, and that
+    // expected 404 must not register as a background-refresh failure. It still
+    // replaces populated state with populated state only, preserving the
+    // no-layout-shift contract.
+    try {
       const health = await fetchRunHealth(runId);
       if (detailRequest === requestId && selectedRunId === runId) {
         runHealth = health;
       }
     } catch {
-      pollFailed = true;
+      // Leave runHealth unchanged; the tile keeps its last populated value.
     }
   }
 
@@ -396,13 +403,13 @@
         {#if !runHealth}
           <div class="empty-row">No review history</div>
         {:else}
+          {@const verdicts = lastReviewVerdicts(runHealth)}
+          {@const degraded = degradedReviewState(runHealth)}
           <dl class="health-grid">
             <div class="health-cell">
               <dt>Last verdict</dt>
               <dd data-testid="review-verdict">
-                {lastReviewVerdicts(runHealth).length > 0
-                  ? lastReviewVerdicts(runHealth).join(', ')
-                  : 'none'}
+                {verdicts.length > 0 ? verdicts.join(', ') : 'none'}
               </dd>
             </div>
             <div class="health-cell">
@@ -418,11 +425,11 @@
               </dd>
             </div>
             <div class="health-cell">
-              <dt>Degraded</dt>
+              <dt>Degraded review</dt>
               <dd>
-                {#if degradedReviewState(runHealth)}
+                {#if degraded}
                   <span class="health-badge health-badge-degraded" data-testid="review-degraded">
-                    {degradedReviewState(runHealth)}
+                    {degraded}
                   </span>
                 {:else}
                   <span>no</span>

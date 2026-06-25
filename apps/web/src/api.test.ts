@@ -27,6 +27,7 @@ const makeIteration = (
   execution_mode: '',
   degraded_reason: '',
   review_mode: 'reviewer-subagents',
+  review_assurance: 'normal',
   findings_fixed_re_reviewed: false,
   validation_passed: true,
   reviews: [{ reviewer: 'redowl', verdict: 'APPROVE' }],
@@ -285,16 +286,25 @@ test('hasOutstandingRequestChanges is true only for unresolved REQUEST_CHANGES',
   assert.equal(hasOutstandingRequestChanges(mixed), true);
 });
 
-test('degradedReviewState flags only degraded execution modes', () => {
-  const degraded = makeHealth([
-    makeIteration({ execution_mode: 'parent-degraded', degraded_reason: 'single docs change' })
+test('degradedReviewState flags degraded review assurance, not execution mode', () => {
+  // A degraded ORCHESTRATION mode (parent-degraded) with normal review assurance
+  // is NOT a degraded review — it must not be flagged.
+  const orchestrationDegraded = makeHealth([
+    makeIteration({
+      execution_mode: 'parent-degraded',
+      degraded_reason: 'single docs change',
+      review_assurance: 'normal'
+    })
   ]);
-  assert.equal(degradedReviewState(degraded), 'parent-degraded: single docs change');
+  assert.equal(degradedReviewState(orchestrationDegraded), null);
 
-  const degradedNoReason = makeHealth([makeIteration({ execution_mode: 'parent-degraded' })]);
-  assert.equal(degradedReviewState(degradedNoReason), 'parent-degraded');
+  // A non-normal review_assurance IS a degraded review and is surfaced verbatim.
+  const degradedReview = makeHealth([
+    makeIteration({ review_assurance: 'local_fallback' })
+  ]);
+  assert.equal(degradedReviewState(degradedReview), 'local_fallback');
 
-  const normal = makeHealth([makeIteration({ execution_mode: 'reviewer-subagents' })]);
+  const normal = makeHealth([makeIteration({ review_assurance: 'normal' })]);
   assert.equal(degradedReviewState(normal), null);
   assert.equal(degradedReviewState(makeHealth([])), null);
 });

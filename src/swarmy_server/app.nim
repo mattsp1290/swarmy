@@ -963,6 +963,10 @@ proc runHealth(ctx: Context) {.gcsafe.} =
     ctx.status(404).json(%*{"error": "run not found", "run_id": runId})
     return
 
+  # The store is opened here only to confirm the run exists in the event store
+  # (404 parity with sibling endpoints); `summary.healthView` opens its own
+  # read-only store and parses the history dir once for both the manifest and the
+  # per-iteration view.
   var store = maybeStore.get
   defer: store.close()
 
@@ -970,11 +974,17 @@ proc runHealth(ctx: Context) {.gcsafe.} =
     logApiRequest(ctx, runId, 404)
     ctx.status(404).json(%*{"error": "run not found", "run_id": runId})
     return
+
+  # `healthView` shells out to `bd` (ready + list) with the adapter's default
+  # timeout, so this handler can block its worker for up to ~2x that timeout in
+  # the worst case (bd hung/unavailable). Acceptable for a local, single-user
+  # observability tool polled every few seconds.
   var manifestJson: JsonNode
   var iterationsJson: JsonNode
   {.cast(gcsafe).}:
-    manifestJson = summary.generateNow(repo).toJson
-    iterationsJson = summary.iterationsJson(repo)
+    let view = summary.healthView(repo)
+    manifestJson = view.manifest.toJson
+    iterationsJson = view.iterations
 
   logApiRequest(ctx, runId, 200)
   ctx.json(%*{

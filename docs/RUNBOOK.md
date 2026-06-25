@@ -66,12 +66,17 @@ from the address bar.
 
 The **Review health** tile surfaces, for the selected run: the current iteration,
 the last review verdict, whether a `REQUEST_CHANGES` is outstanding (a verdict not
-yet fixed-and-re-reviewed), and the degraded-review state when an iteration ran in
-a degraded execution mode. It is backed by the HTTP endpoint
+yet fixed-and-re-reviewed), and the degraded-review state when the iteration's
+**review** ran in a degraded mode. The degraded-review label is derived from the
+review-assurance signal (`review_assurance` ≠ `normal`), **not** from
+`execution_mode` — a degraded *orchestration* mode such as `parent-degraded`
+(the orchestrator wrote the change directly) is still a normal review and is not
+labelled degraded, consistent with [`LOOPS.md`](LOOPS.md#degraded-review-states).
+The tile is backed by the read-only HTTP endpoint
 `GET /api/runs/:run_id/health`, which reuses the `swarmy summary` generator (see
 §7) for the run-health manifest and adds per-iteration review verdicts and
-degraded-review signals (`execution_mode`, `degraded_reason`,
-`findings_fixed_re_reviewed`). The endpoint is read-only. See
+signals (`review_assurance`, `review_mode`, `findings_fixed_re_reviewed`, and the
+orchestration-level `execution_mode`/`degraded_reason`). See
 [`LOOPS.md`](LOOPS.md#degraded-review-states) for the degraded-review vocabulary.
 
 ## 4. Interpret stages
@@ -137,10 +142,18 @@ epic/task mix into one `beads` check):
 | `reviews-excluded` | `reviews/` is git-ignored (swarmy keeps it in `.git/info/exclude`, not the tracked `.gitignore`). |
 | `beads` | `bd ready` returns actionable work, and at least one item is concrete (not epic-only). |
 
-`--main BRANCH` overrides the expected base branch; a single-token `.ralph` file
-is honored when present. Exit codes match `doctor`: `0` when ready (warnings are
-allowed), `1` when any check FAILs, `2` on bad arguments. All output is passed
-through the secret redactor.
+The `beads` check is intentionally a **WARN, never a FAIL**: an empty ready queue
+(or an epics-only queue) means there is nothing to do right now — possibly a
+complete graph — not that the checkout is unready. So a clean checkout with no
+ready beads still exits `0`. Scripts that gate on the exit code should therefore
+treat `0` as "the checkout is loop-ready", not "there is work to do" — read the
+`beads` check (or `swarmy summary`'s `recommended_next`) for the latter.
+
+`--main BRANCH` overrides the expected base branch; otherwise a `.ralph` file's
+`main_branch=BRANCH` line is honored when present (the format the loop tooling
+writes). Exit codes match `doctor`: `0` when ready (warnings are allowed), `1`
+when any check FAILs, `2` on bad arguments. All output is passed through the
+secret redactor.
 
 The epic/task split in the `beads` check uses the shared `classifyReady` helper
 in `swarmy_core/bd_adapter` (also consumed by `swarmy summary`), so "only epics

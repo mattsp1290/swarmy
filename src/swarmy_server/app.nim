@@ -8,6 +8,7 @@ import swarmy_core/events
 import swarmy_core/logging
 import swarmy_core/persistence
 import swarmy_core/run_metadata
+import swarmy_cli/summary
 
 type ServerConfig* = object
   address*: string
@@ -937,6 +938,61 @@ proc runEvents(ctx: Context) {.gcsafe.} =
     "latest_seq": latestSeq
   })
 
+proc runHealth(ctx: Context) {.gcsafe.} =
+  ## Surfaces review/run health for the configured run: the compact summary
+  ## manifest (reusing task 04's generator — no re-derivation here) plus the
+  ## per-iteration review verdicts and degraded-review signals.
+  if not validateApiRequest(ctx):
+    return
+
+  let runId = ctx.param("run_id")
+  let repo = currentRepoRoot()
+
+  # Health is derived for the configured repo's current run. Serving it for any
+  # other run id in the store would return a manifest whose run_id contradicts
+  # the requested one, so restrict it to the live run recorded in metadata.
+  let metadata = readMetadataIfPresent(repo)
+  if metadata.isNone or metadata.get.runId != runId:
+    logApiRequest(ctx, runId, 404)
+    ctx.status(404).json(%*{"error": "run not found", "run_id": runId})
+    return
+
+  let maybeStore = openConfiguredStore()
+  if maybeStore.isNone:
+    logApiRequest(ctx, runId, 404)
+    ctx.status(404).json(%*{"error": "run not found", "run_id": runId})
+    return
+
+  # The store is opened here only to confirm the run exists in the event store
+  # (404 parity with sibling endpoints); `summary.healthView` opens its own
+  # read-only store and parses the history dir once for both the manifest and the
+  # per-iteration view.
+  var store = maybeStore.get
+  defer: store.close()
+
+  if store.findRunSummary(runId).isNone:
+    logApiRequest(ctx, runId, 404)
+    ctx.status(404).json(%*{"error": "run not found", "run_id": runId})
+    return
+
+  # `healthView` shells out to `bd` (ready + list) with the adapter's default
+  # timeout, so this handler can block its worker for up to ~2x that timeout in
+  # the worst case (bd hung/unavailable). Acceptable for a local, single-user
+  # observability tool polled every few seconds.
+  var manifestJson: JsonNode
+  var iterationsJson: JsonNode
+  {.cast(gcsafe).}:
+    let view = summary.healthView(repo)
+    manifestJson = view.manifest.toJson
+    iterationsJson = view.iterations
+
+  logApiRequest(ctx, runId, 200)
+  ctx.json(%*{
+    "run_id": runId,
+    "summary": manifestJson,
+    "iterations": iterationsJson
+  })
+
 proc registerRoutes*(
   staticDir: string,
   repoPath = ".",
@@ -956,6 +1012,7 @@ proc registerRoutes*(
   Route.get("/api/runs/:run_id/agents/:agent_id", agentDetail)
   Route.get("/api/runs/:run_id/stages", runStages)
   Route.get("/api/runs/:run_id/events", runEvents)
+  Route.get("/api/runs/:run_id/health", runHealth)
   Route.get("/api/runs/:run_id", runDetail)
   Route.get("/", appIndex)
   Route.get("/assets/:file", appAsset)

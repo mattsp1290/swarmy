@@ -7,8 +7,9 @@
 #   - smoke:    full root build + tests/smoke.sh (python3/curl preinstalled).
 #   - package:  produces a release tarball via scripts/package.sh and uploads it.
 #
-# Nim is installed with the official choosenim script (no third-party action)
-# so the toolchain version tracks upstream stable (>= 2.2.4).
+# Nim is installed with the official choosenim script (no third-party action).
+# CHOOSENIM_CHOOSE_VERSION pins the toolchain to 2.2.4 (the project minimum per
+# swarmy.nimble) so a hosted choosenim change cannot silently bump the compiler.
 
 name: CI
 
@@ -26,6 +27,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install Nim
         run: |
+          # Pin the Nim toolchain to the project's minimum required version so a
+          # choosenim upstream change cannot silently bump the compiler.
+          export CHOOSENIM_CHOOSE_VERSION="2.2.4"
           curl https://nim-lang.org/choosenim/init.sh -sSf | sh -s -- -y
           echo "$HOME/.nimble/bin" >> "$GITHUB_PATH"
       - name: Install Nim dependencies
@@ -59,6 +63,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install Nim
         run: |
+          # Pin the Nim toolchain to the project's minimum required version so a
+          # choosenim upstream change cannot silently bump the compiler.
+          export CHOOSENIM_CHOOSE_VERSION="2.2.4"
           curl https://nim-lang.org/choosenim/init.sh -sSf | sh -s -- -y
           echo "$HOME/.nimble/bin" >> "$GITHUB_PATH"
       - uses: actions/setup-node@v4
@@ -80,6 +87,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install Nim
         run: |
+          # Pin the Nim toolchain to the project's minimum required version so a
+          # choosenim upstream change cannot silently bump the compiler.
+          export CHOOSENIM_CHOOSE_VERSION="2.2.4"
           curl https://nim-lang.org/choosenim/init.sh -sSf | sh -s -- -y
           echo "$HOME/.nimble/bin" >> "$GITHUB_PATH"
       - uses: actions/setup-node@v4

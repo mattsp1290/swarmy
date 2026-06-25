@@ -99,6 +99,39 @@ const RUN_EVENTS_PAGE = {
   latest_seq: 4
 };
 
+const RUN_HEALTH = {
+  run_id: RUN_ID,
+  summary: {
+    run_id: RUN_ID,
+    last_iteration: 7,
+    last_branch: 'bead-swarm/iteration-7-x',
+    status: 'blocked',
+    execution_mode: 'parent-degraded',
+    degraded_reason: 'reviewers unavailable',
+    review_mode: 'local-fallback',
+    reviews: [{ reviewer: 'scout', verdict: 'REQUEST_CHANGES' }],
+    latest_validation: { passed: false, entries: ['nimble test: failed'] },
+    unresolved_risks: ['reviewer requested changes']
+  },
+  iterations: [
+    {
+      iteration: 7,
+      branch: 'bead-swarm/iteration-7-x',
+      status: 'blocked',
+      // execution_mode is a degraded ORCHESTRATION mode, but the degraded-review
+      // label is driven by review_assurance, not this field.
+      execution_mode: 'parent-degraded',
+      degraded_reason: 'orchestrator wrote directly',
+      review_mode: 'local-fallback',
+      review_assurance: 'local_fallback',
+      findings_fixed_re_reviewed: false,
+      validation_passed: false,
+      reviews: [{ reviewer: 'scout', verdict: 'REQUEST_CHANGES' }],
+      review_blocker_summary: ['reviewer requested changes']
+    }
+  ]
+};
+
 const json = (body: unknown) => ({
   status: 200,
   contentType: 'application/json',
@@ -118,6 +151,9 @@ async function stubHappyApi(page: Page): Promise<void> {
   );
   await page.route('**/api/runs/*/events*', (route) =>
     route.fulfill(json(RUN_EVENTS_PAGE))
+  );
+  await page.route('**/api/runs/*/health', (route) =>
+    route.fulfill(json(RUN_HEALTH))
   );
 }
 
@@ -180,6 +216,7 @@ test('polls in new activity without shifting or resizing core controls', async (
     route.fulfill(json({ source_repo: '/Users/dev/git/swarmy', runs: [RUN_SUMMARY] }))
   );
   await page.route('**/api/runs/*', (route) => route.fulfill(json(RUN_DETAIL)));
+  await page.route('**/api/runs/*/health', (route) => route.fulfill(json(RUN_HEALTH)));
   await page.route('**/api/runs/*/events*', (route) => {
     eventsCalls += 1;
     if (eventsCalls === 1) {
@@ -248,6 +285,28 @@ test('polls in new activity without shifting or resizing core controls', async (
   expect(afterRunList).toEqual(beforeRunList);
   expect(afterRefresh).toEqual(beforeRefresh);
   expect(afterHeader).toEqual(beforeHeader);
+});
+
+test('renders the review-health tile from the health endpoint', async ({ page }) => {
+  await stubHappyApi(page);
+  await page.goto('/');
+
+  const tile = page.locator('[data-testid="review-health"]');
+  await expect(tile).toBeVisible();
+  await expect(tile).toContainText('Review health');
+
+  // Current iteration, last verdict, the outstanding REQUEST_CHANGES badge, and
+  // the degraded-review state all render from the /health payload.
+  await expect(page.locator('[data-testid="review-iteration"]')).toHaveText(
+    'Iteration 7'
+  );
+  await expect(page.locator('[data-testid="review-verdict"]')).toHaveText(
+    'REQUEST_CHANGES'
+  );
+  await expect(page.locator('[data-testid="review-outstanding"]')).toBeVisible();
+  await expect(page.locator('[data-testid="review-degraded"]')).toContainText(
+    'local_fallback'
+  );
 });
 
 test('surfaces the auth panel on a 401 from the API', async ({ page }) => {

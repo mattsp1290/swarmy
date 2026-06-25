@@ -79,6 +79,45 @@ export type RunEventsPage = {
   latest_seq: number;
 };
 
+export type ReviewVerdict = {
+  reviewer: string;
+  verdict: string;
+  artifact?: string;
+};
+
+export type IterationHealth = {
+  iteration: number;
+  branch: string;
+  status: string;
+  execution_mode: string;
+  degraded_reason: string;
+  review_mode: string;
+  review_assurance: string;
+  findings_fixed_re_reviewed: boolean;
+  validation_passed: boolean;
+  reviews: ReviewVerdict[];
+  review_blocker_summary: string[];
+};
+
+export type RunHealthSummary = {
+  run_id: string;
+  last_iteration: number;
+  last_branch: string;
+  status: string;
+  execution_mode: string;
+  degraded_reason: string;
+  review_mode: string;
+  reviews: ReviewVerdict[];
+  latest_validation: { passed: boolean; entries: string[] };
+  unresolved_risks: string[];
+};
+
+export type RunHealth = {
+  run_id: string;
+  summary: RunHealthSummary;
+  iterations: IterationHealth[];
+};
+
 const authTokenStorageKey = 'swarmy.authToken';
 
 /**
@@ -294,6 +333,78 @@ export function mergeRecentEvents(
     return deduped.slice(0, cap);
   }
   return deduped;
+}
+
+/**
+ * Fetch the review/run-health surface for a run: the compact summary manifest
+ * plus per-iteration review verdicts and degraded-review signals.
+ */
+export async function fetchRunHealth(runId: string): Promise<RunHealth> {
+  const response = await fetch(
+    `/api/runs/${encodeURIComponent(runId)}/health`,
+    { headers: jsonHeaders() }
+  );
+  if (!response.ok) {
+    const message =
+      response.status === 401
+        ? 'Local token required or rejected (401).'
+        : `Run health request failed: ${response.status}`;
+    throw new ApiError(message, response.status, response.status === 401);
+  }
+
+  return (await response.json()) as RunHealth;
+}
+
+/** Pure helper: the most recent iteration's health, or null when none exist. */
+export function latestIterationHealth(h: RunHealth): IterationHealth | null {
+  return h.iterations.length > 0 ? h.iterations[h.iterations.length - 1] : null;
+}
+
+/**
+ * Pure helper: the distinct review verdicts recorded for the latest iteration,
+ * in the order reviewers reported them (e.g. ['APPROVE'] or ['REQUEST_CHANGES']).
+ */
+export function lastReviewVerdicts(h: RunHealth): string[] {
+  const iteration = latestIterationHealth(h);
+  return iteration ? iteration.reviews.map((r) => r.verdict) : [];
+}
+
+/**
+ * Pure helper: true when the latest iteration has a REQUEST_CHANGES verdict that
+ * has not yet been fixed-and-re-reviewed (the `findings_fixed_re_reviewed`
+ * positive signal). This is the "outstanding REQUEST_CHANGES" condition.
+ */
+export function hasOutstandingRequestChanges(h: RunHealth): boolean {
+  const iteration = latestIterationHealth(h);
+  if (!iteration) {
+    return false;
+  }
+  const requested = iteration.reviews.some(
+    (r) => r.verdict === 'REQUEST_CHANGES'
+  );
+  return requested && !iteration.findings_fixed_re_reviewed;
+}
+
+/**
+ * Pure helper: the degraded-REVIEW state label for the latest iteration, or null
+ * when the review ran normally. This is derived from the review-assurance signal
+ * (`review_assurance`), NOT from `execution_mode`: a degraded *orchestration*
+ * mode like `parent-degraded` (orchestrator wrote the change directly) is a
+ * normal review and must not be labelled a degraded review — see the guidance in
+ * `BeadSwarmGuidance` and docs/LOOPS.md. A non-`normal` `review_assurance` maps
+ * to one of the canonical degraded-review states (e.g. `local_fallback`,
+ * `reviewers_unavailable`).
+ */
+export function degradedReviewState(h: RunHealth): string | null {
+  const iteration = latestIterationHealth(h);
+  if (!iteration) {
+    return null;
+  }
+  const assurance = (iteration.review_assurance ?? '').trim();
+  if (assurance.length > 0 && assurance.toLowerCase() !== 'normal') {
+    return assurance;
+  }
+  return null;
 }
 
 /** Pure helper: true when an event marks a bead entering the blocked stage. */
